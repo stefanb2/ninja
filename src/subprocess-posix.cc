@@ -21,6 +21,7 @@
 #include <poll.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
 #include <spawn.h>
@@ -206,6 +207,19 @@ SubprocessSet::SubprocessSet() {
     Fatal("sigaction: %s", strerror(errno));
   if (sigaction(SIGHUP, &act, &old_hup_act_) < 0)
     Fatal("sigaction: %s", strerror(errno));
+
+  const char *value = getenv("MAKEFLAGS");
+  if (value) {
+    const char *jobserver = strstr(value, "--jobserver-fds=");
+    if (jobserver) {
+      int rfd = -1;
+      int wfd = -1;
+      if ((sscanf(jobserver, "--jobserver-fds=%d,%d", &rfd, &wfd) == 2) &&
+          (rfd >= 0) && (wfd >= 0)) {
+        fprintf(stderr, "FOUND JOBSERVER %d %d\n", rfd, wfd);
+      }
+    }
+  }
 }
 
 SubprocessSet::~SubprocessSet() {
