@@ -88,6 +88,7 @@ struct SubprocessSet {
   bool DoWork();
   Subprocess* NextFinished();
   void Clear();
+  bool CanRunMore();
 
   vector<Subprocess*> running_;
   queue<Subprocess*> finished_;
