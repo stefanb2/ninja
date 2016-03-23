@@ -83,7 +83,6 @@ struct TokenStore {
   ~TokenStore();
 
   void Setup();
-  bool Available() const;
   bool Acquire();
   void Reserve();
   void Release();
