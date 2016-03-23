@@ -192,18 +192,30 @@ void TokenStore::Setup() {
 }
 
 bool TokenStore::Available() const {
-  if (rfd_ < 0)
+  if ((rfd_ < 0) || (available_ > 0))
     return true;
   return false;
 }
 
 void TokenStore::Reserve() {
+  if (rfd_ < 0)
+    return;
+  available_--;
+  used_++;
 }
 
 void TokenStore::Release() {
+  if (rfd_ < 0)
+    return;
+  used_--;
+  available_++;
 }
 
 void TokenStore::Clear() {
+  if (rfd_ < 0)
+    return;
+  available_ += used_;
+  used_       = 0;
 }
 
 int SubprocessSet::interrupted_;
