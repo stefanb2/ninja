@@ -94,6 +94,8 @@ struct TokenStore {
   int used_;
   int rfd_;
   int wfd_;
+
+  void Return();
 };
 #endif
 

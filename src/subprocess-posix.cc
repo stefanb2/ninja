@@ -172,6 +172,7 @@ TokenStore::TokenStore() : available_(0), used_(0), rfd_(-1), wfd_(-1) {
 }
 
 TokenStore::~TokenStore() {
+  Clear();
 }
 
 static bool CheckFd(int fd) {
@@ -228,11 +229,16 @@ void TokenStore::Reserve() {
   used_++;
 }
 
+void TokenStore::Return() {
+  const char buf = '+';
+  write(wfd_, &buf, 1);
+}
+
 void TokenStore::Release() {
   if (rfd_ < 0)
     return;
   used_--;
-  available_++;
+  Return();
 }
 
 void TokenStore::Clear() {
@@ -240,6 +246,8 @@ void TokenStore::Clear() {
     return;
   available_ += used_;
   used_       = 0;
+  while (available_-- > 0)
+    Return();
 }
 
 int SubprocessSet::interrupted_;
