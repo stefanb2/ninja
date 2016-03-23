@@ -77,6 +77,25 @@ struct Subprocess {
   friend struct SubprocessSet;
 };
 
+#ifndef _WIN32
+struct TokenStore {
+  TokenStore();
+  ~TokenStore();
+
+  void Setup();
+  bool Available() const;
+  void Reserve();
+  void Release();
+  void Clear();
+
+ private:
+  int available_;
+  int used_;
+  int rfd_;
+  int wfd_;
+};
+#endif
+
 /// SubprocessSet runs a ppoll/pselect() loop around a set of Subprocesses.
 /// DoWork() waits for any state change in subprocesses; finished_
 /// is a queue of subprocesses as they finish.
@@ -109,6 +128,8 @@ struct SubprocessSet {
   struct sigaction old_term_act_;
   struct sigaction old_hup_act_;
   sigset_t old_mask_;
+
+  TokenStore tokens_;
 #endif
 };
 
