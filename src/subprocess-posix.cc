@@ -174,6 +174,15 @@ TokenStore::TokenStore() : available_(0), used_(0), rfd_(-1), wfd_(-1) {
 TokenStore::~TokenStore() {
 }
 
+static bool CheckFd(int fd) {
+  if (fd < 0)
+    return false;
+  int ret = fcntl(fd, F_GETFD);
+  if (ret < 0)
+    return false;
+  return true;
+}
+
 void TokenStore::Setup() {
   const char *value = getenv("MAKEFLAGS");
   if (value) {
@@ -182,7 +191,8 @@ void TokenStore::Setup() {
       int rfd = -1;
       int wfd = -1;
       if ((sscanf(jobserver, "--jobserver-fds=%d,%d", &rfd, &wfd) == 2) &&
-          (rfd >= 0) && (wfd >= 0)) {
+          CheckFd(rfd) &&
+          CheckFd(wfd)) {
         fprintf(stderr, "FOUND JOBSERVER %d %d\n", rfd, wfd);
         rfd_ = rfd;
         wfd_ = wfd;
