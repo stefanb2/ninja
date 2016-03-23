@@ -207,6 +207,20 @@ bool TokenStore::Available() const {
   return false;
 }
 
+bool TokenStore::Acquire() {
+  pollfd pollfds[] = {{rfd_, POLLIN, 0}};
+  int ret = poll(pollfds, 1, 0);
+  if (ret > 0) {
+    char buf;
+    int ret = read(rfd_, &buf, 1);
+    if (ret > 0) {
+      available_++;
+      return true;
+    }
+  }
+  return false;
+}
+
 void TokenStore::Reserve() {
   if (rfd_ < 0)
     return;
@@ -423,5 +437,5 @@ void SubprocessSet::Clear() {
 bool SubprocessSet::CanRunMore() {
   if (running_.empty() || tokens_.Available())
     return true;
-  return false;
+  return tokens_.Acquire();
 }
