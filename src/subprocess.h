@@ -77,26 +77,8 @@ struct Subprocess {
   friend struct SubprocessSet;
 };
 
-#ifndef _WIN32
-struct TokenStore {
-  TokenStore();
-  ~TokenStore();
-
-  void Setup();
-  bool Acquire();
-  void Reserve();
-  void Release();
-  void Clear();
-
- private:
-  int available_;
-  int used_;
-  int rfd_;
-  int wfd_;
-
-  void Return();
-};
-#endif
+// forward declaration
+struct TokenStore;
 
 /// SubprocessSet runs a ppoll/pselect() loop around a set of Subprocesses.
 /// DoWork() waits for any state change in subprocesses; finished_
@@ -131,7 +113,8 @@ struct SubprocessSet {
   struct sigaction old_hup_act_;
   sigset_t old_mask_;
 
-  TokenStore tokens_;
+ private:
+  TokenStore *tokens_;
 #endif
 };
 
