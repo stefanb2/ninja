@@ -179,7 +179,7 @@ struct TokenStore {
   void Clear();
 
  private:
-  int available_;
+  bool acquired_;
   int used_;
   int rfd_;
   int wfd_;
@@ -188,7 +188,7 @@ struct TokenStore {
   void Return();
 };
 
-TokenStore::TokenStore() : available_(0), used_(0), rfd_(-1), wfd_(-1) {
+TokenStore::TokenStore() : acquired_(false), used_(0), rfd_(-1), wfd_(-1) {
 }
 
 TokenStore::~TokenStore() {
@@ -226,7 +226,7 @@ bool TokenStore::Setup() {
 }
 
 bool TokenStore::Acquire() {
-  if (available_ > 0)
+  if (acquired_)
     return true;
 
   pollfd pollfds[] = {{rfd_, POLLIN, 0}};
@@ -235,7 +235,7 @@ bool TokenStore::Acquire() {
     char buf;
     int ret = read(rfd_, &buf, 1);
     if (ret > 0) {
-      available_++;
+      acquired_ = true;
       return true;
     }
   }
@@ -243,7 +243,7 @@ bool TokenStore::Acquire() {
 }
 
 void TokenStore::Reserve() {
-  available_--;
+  acquired_ = false;
   used_++;
 }
 
@@ -258,10 +258,11 @@ void TokenStore::Release() {
 }
 
 void TokenStore::Clear() {
-  available_ += used_;
-  used_       = 0;
-  while (available_-- > 0)
+  if (acquired_)
+    used_++;
+  while (used_-- > 0)
     Return();
+  acquired_ = false;
 }
 
 int SubprocessSet::interrupted_;
