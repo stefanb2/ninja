@@ -229,8 +229,16 @@ bool TokenStore::Acquire() {
   if (acquired_)
     return true;
 
+#ifdef USE_PPOLL
   pollfd pollfds[] = {{rfd_, POLLIN, 0}};
   int ret = poll(pollfds, 1, 0);
+#else
+  fd_set set;
+  struct timeval timeout = { 0, 0 };
+  FD_ZERO(&set);
+  FD_SET(rfd_, &set);
+  int ret = select(rfd_ + 1, &set, NULL, NULL, &timeout);
+#endif
   if (ret > 0) {
     char buf;
     int ret = read(rfd_, &buf, 1);
