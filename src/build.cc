@@ -695,8 +695,10 @@ bool RealCommandRunner::CanRunMore() const {
   size_t subproc_number =
       subprocs_.running_.size() + subprocs_.finished_.size();
   return (int)subproc_number < config_.parallelism
-    && ((subprocs_.CanRunMore() || config_.max_load_average <= 0.0f)
-        || GetLoadAverage() < config_.max_load_average);
+    && (subprocs_.running_.empty()
+      || (subprocs_.CanRunMore()
+        && (config_.max_load_average <= 0.0f
+          || GetLoadAverage() < config_.max_load_average)));
 }
 
 bool RealCommandRunner::StartCommand(Edge* edge) {

@@ -440,5 +440,5 @@ void SubprocessSet::Clear() {
 }
 
 bool SubprocessSet::CanRunMore() {
-  return running_.empty() || tokens_.Acquire();
+  return tokens_.Acquire();
 }
