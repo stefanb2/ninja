@@ -257,7 +257,10 @@ void TokenStore::Reserve() {
 
 void TokenStore::Return() {
   const char buf = '+';
-  write(wfd_, &buf, 1);
+  if (write(wfd_, &buf, 1) < 0) {
+    // If the write fails, there's nothing we can do.
+    // But this block seems necessary to silence the warning.
+  }
 }
 
 void TokenStore::Release() {
