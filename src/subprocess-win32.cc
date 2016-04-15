@@ -203,7 +203,7 @@ const string& Subprocess::GetOutput() const {
 
 HANDLE SubprocessSet::ioport_;
 
-SubprocessSet::SubprocessSet() {
+SubprocessSet::SubprocessSet() : tokens_(NULL) {
   ioport_ = ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 1);
   if (!ioport_)
     Win32Fatal("CreateIoCompletionPort");

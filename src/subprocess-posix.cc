@@ -21,7 +21,6 @@
 #include <poll.h>
 #include <unistd.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
 #include <spawn.h>
@@ -168,114 +167,6 @@ const string& Subprocess::GetOutput() const {
   return buf_;
 }
 
-struct TokenStore {
-  TokenStore();
-  ~TokenStore();
-
-  bool Setup();
-  bool Acquire();
-  void Reserve();
-  void Release();
-  void Clear();
-
- private:
-  bool acquired_;
-  int used_;
-  int rfd_;
-  int wfd_;
-
-  bool CheckFd(int fd);
-  void Return();
-};
-
-TokenStore::TokenStore() : acquired_(false), used_(0), rfd_(-1), wfd_(-1) {
-}
-
-TokenStore::~TokenStore() {
-  Clear();
-}
-
-bool TokenStore::CheckFd(int fd) {
-  if (fd < 0)
-    return false;
-  int ret = fcntl(fd, F_GETFD);
-  if (ret < 0)
-    return false;
-  return true;
-}
-
-bool TokenStore::Setup() {
-  const char *value = getenv("MAKEFLAGS");
-  if (value) {
-    const char *jobserver = strstr(value, "--jobserver-fds=");
-    if (jobserver) {
-      int rfd = -1;
-      int wfd = -1;
-      if ((sscanf(jobserver, "--jobserver-fds=%d,%d", &rfd, &wfd) == 2) &&
-          CheckFd(rfd) &&
-          CheckFd(wfd)) {
-        fprintf(stderr, "FOUND JOBSERVER %d %d\n", rfd, wfd);
-        rfd_ = rfd;
-        wfd_ = wfd;
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
-
-bool TokenStore::Acquire() {
-  if (acquired_)
-    return true;
-
-#ifdef USE_PPOLL
-  pollfd pollfds[] = {{rfd_, POLLIN, 0}};
-  int ret = poll(pollfds, 1, 0);
-#else
-  fd_set set;
-  struct timeval timeout = { 0, 0 };
-  FD_ZERO(&set);
-  FD_SET(rfd_, &set);
-  int ret = select(rfd_ + 1, &set, NULL, NULL, &timeout);
-#endif
-  if (ret > 0) {
-    char buf;
-    int ret = read(rfd_, &buf, 1);
-    if (ret > 0) {
-      acquired_ = true;
-      return true;
-    }
-  }
-  return false;
-}
-
-void TokenStore::Reserve() {
-  acquired_ = false;
-  used_++;
-}
-
-void TokenStore::Return() {
-  const char buf = '+';
-  if (write(wfd_, &buf, 1) < 0) {
-    // If the write fails, there's nothing we can do.
-    // But this block seems necessary to silence the warning.
-  }
-}
-
-void TokenStore::Release() {
-  used_--;
-  Return();
-}
-
-void TokenStore::Clear() {
-  if (acquired_)
-    used_++;
-  while (used_-- > 0)
-    Return();
-  acquired_ = false;
-}
-
 int SubprocessSet::interrupted_;
 
 void SubprocessSet::SetInterruptedFlag(int signum) {
@@ -316,11 +207,11 @@ SubprocessSet::SubprocessSet() : tokens_(NULL) {
   if (sigaction(SIGHUP, &act, &old_hup_act_) < 0)
     Fatal("sigaction: %s", strerror(errno));
 
-  TokenStore *tokenstore = new TokenStore;
-  if (tokenstore->Setup())
-    tokens_ = tokenstore;
+  TokenPool *tokenpool = new TokenPool;
+  if (tokenpool->Setup())
+    tokens_ = tokenpool;
   else
-    delete tokenstore;
+    delete tokenpool;
 }
 
 SubprocessSet::~SubprocessSet() {

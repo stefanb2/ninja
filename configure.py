@@ -528,6 +528,7 @@ if platform.is_windows():
     objs += cc('getopt')
 else:
     objs += cxx('subprocess-posix')
+    objs += cxx('tokenpool-gnu-make')
 if platform.is_aix():
     objs += cc('getopt')
 if platform.is_msvc():
