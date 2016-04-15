@@ -668,7 +668,7 @@ void Plan::Dump() const {
 
 struct RealCommandRunner : public CommandRunner {
   explicit RealCommandRunner(const BuildConfig& config);
-  virtual ~RealCommandRunner() {}
+  virtual ~RealCommandRunner();
   virtual bool CanRunMore() const;
   virtual bool StartCommand(Edge* edge);
   virtual bool WaitForCommand(Result* result);
@@ -681,14 +681,12 @@ struct RealCommandRunner : public CommandRunner {
   map<const Subprocess*, Edge*> subproc_to_edge_;
 };
 
-RealCommandRunner::RealCommandRunner(const BuildConfig& config)
-    : config_(config),
-      tokens_(NULL) {
-  TokenPool *tokenpool = new TokenPool;
-  if (tokenpool->Setup())
-    tokens_ = tokenpool;
-  else
-    delete tokenpool;
+RealCommandRunner::RealCommandRunner(const BuildConfig& config) : config_(config) {
+  tokens_ = TokenPool::Get();
+}
+
+RealCommandRunner::~RealCommandRunner() {
+  delete tokens_;
 }
 
 vector<Edge*> RealCommandRunner::GetActiveEdges() {

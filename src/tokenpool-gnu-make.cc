@@ -21,15 +21,44 @@
 #include <string.h>
 #include <stdlib.h>
 
+// TokenPool implementation for GNU make jobserver
+struct GNUmakeTokenPool : public TokenPool {
+  GNUmakeTokenPool();
+  virtual ~GNUmakeTokenPool();
+
+  virtual bool Acquire();
+  virtual void Reserve();
+  virtual void Release();
+  virtual void Clear();
+
+  bool Setup();
+
+ private:
+  int available_;
+  int used_;
+
+#ifdef _WIN32
+  // @TODO
+#else
+  int rfd_;
+  int wfd_;
+
+  bool CheckFd(int fd);
+#endif
+
+  void Return();
+};
+
 // every instance owns an implicit token -> available_ == 1
-TokenPool::TokenPool() : available_(1), used_(0), rfd_(-1), wfd_(-1) {
+GNUmakeTokenPool::GNUmakeTokenPool() : available_(1), used_(0),
+                                       rfd_(-1), wfd_(-1) {
 }
 
-TokenPool::~TokenPool() {
+GNUmakeTokenPool::~GNUmakeTokenPool() {
   Clear();
 }
 
-bool TokenPool::CheckFd(int fd) {
+bool GNUmakeTokenPool::CheckFd(int fd) {
   if (fd < 0)
     return false;
   int ret = fcntl(fd, F_GETFD);
@@ -38,7 +67,7 @@ bool TokenPool::CheckFd(int fd) {
   return true;
 }
 
-bool TokenPool::Setup() {
+bool GNUmakeTokenPool::Setup() {
   const char *value = getenv("MAKEFLAGS");
   if (value) {
     const char *jobserver = strstr(value, "--jobserver-fds=");
@@ -59,7 +88,7 @@ bool TokenPool::Setup() {
   return false;
 }
 
-bool TokenPool::Acquire() {
+bool GNUmakeTokenPool::Acquire() {
   if (available_ > 0)
     return true;
 
@@ -84,27 +113,36 @@ bool TokenPool::Acquire() {
   return false;
 }
 
-void TokenPool::Reserve() {
+void GNUmakeTokenPool::Reserve() {
   available_--;
   used_++;
 }
 
-void TokenPool::Return() {
+void GNUmakeTokenPool::Return() {
   const char buf = '+';
   if (write(wfd_, &buf, 1) > 0)
     available_--;
 }
 
-void TokenPool::Release() {
+void GNUmakeTokenPool::Release() {
   available_++;
   used_--;
   if (available_ > 1)
     Return();
 }
 
-void TokenPool::Clear() {
+void GNUmakeTokenPool::Clear() {
   while (used_ > 0)
     Release();
   while (available_ > 1)
     Return();
+}
+
+struct TokenPool *TokenPool::Get(void) {
+  GNUmakeTokenPool *tokenpool = new GNUmakeTokenPool;
+  if (tokenpool->Setup())
+    return tokenpool;
+  else
+    delete tokenpool;
+  return NULL;
 }

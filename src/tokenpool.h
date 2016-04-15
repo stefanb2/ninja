@@ -12,28 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// interface to token pool
 struct TokenPool {
-  TokenPool();
-  ~TokenPool();
+  virtual ~TokenPool() {}
 
-  bool Setup();
-  bool Acquire();
-  void Reserve();
-  void Release();
-  void Clear();
+  virtual bool Acquire() = 0;
+  virtual void Reserve() = 0;
+  virtual void Release() = 0;
+  virtual void Clear() = 0;
 
- private:
-  int available_;
-  int used_;
-
-#ifdef _WIN32
-  // @TODO
-#else
-  int rfd_;
-  int wfd_;
-
-  bool CheckFd(int fd);
-#endif
-
-  void Return();
+  // returns NULL if token pool is not available
+  static struct TokenPool *Get(void);
 };
