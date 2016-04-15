@@ -203,7 +203,7 @@ const string& Subprocess::GetOutput() const {
 
 HANDLE SubprocessSet::ioport_;
 
-SubprocessSet::SubprocessSet() : tokens_(NULL) {
+SubprocessSet::SubprocessSet() {
   ioport_ = ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 1);
   if (!ioport_)
     Win32Fatal("CreateIoCompletionPort");
@@ -294,8 +294,4 @@ void SubprocessSet::Clear() {
        i != running_.end(); ++i)
     delete *i;
   running_.clear();
-}
-
-bool SubprocessSet::CanRunMore() {
-  return true;
 }

@@ -23,7 +23,7 @@ struct TokenPool {
   void Clear();
 
  private:
-  bool acquired_;
+  int available_;
   int used_;
 
 #ifdef _WIN32

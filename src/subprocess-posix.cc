@@ -188,7 +188,7 @@ void SubprocessSet::HandlePendingInterruption() {
     interrupted_ = SIGHUP;
 }
 
-SubprocessSet::SubprocessSet() : tokens_(NULL) {
+SubprocessSet::SubprocessSet() {
   sigset_t set;
   sigemptyset(&set);
   sigaddset(&set, SIGINT);
@@ -206,12 +206,6 @@ SubprocessSet::SubprocessSet() : tokens_(NULL) {
     Fatal("sigaction: %s", strerror(errno));
   if (sigaction(SIGHUP, &act, &old_hup_act_) < 0)
     Fatal("sigaction: %s", strerror(errno));
-
-  TokenPool *tokenpool = new TokenPool;
-  if (tokenpool->Setup())
-    tokens_ = tokenpool;
-  else
-    delete tokenpool;
 }
 
 SubprocessSet::~SubprocessSet() {
@@ -233,8 +227,6 @@ Subprocess *SubprocessSet::Add(const string& command, bool use_console) {
     delete subprocess;
     return 0;
   }
-  if (tokens_ && !running_.empty())
-    tokens_->Reserve();
   running_.push_back(subprocess);
   return subprocess;
 }
@@ -280,8 +272,6 @@ bool SubprocessSet::DoWork() {
       if ((*i)->Done()) {
         finished_.push(*i);
         i = running_.erase(i);
-        if (tokens_ && !running_.empty())
-          tokens_->Release();
         continue;
       }
     }
@@ -329,8 +319,6 @@ bool SubprocessSet::DoWork() {
       if ((*i)->Done()) {
         finished_.push(*i);
         i = running_.erase(i);
-        if (tokens_ && !running_.empty())
-          tokens_->Release();
         continue;
       }
     }
@@ -360,10 +348,4 @@ void SubprocessSet::Clear() {
        i != running_.end(); ++i)
     delete *i;
   running_.clear();
-  if (tokens_)
-    tokens_->Clear();
-}
-
-bool SubprocessSet::CanRunMore() {
-  return !tokens_ || tokens_->Acquire();
 }

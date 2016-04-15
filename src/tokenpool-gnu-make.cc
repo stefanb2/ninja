@@ -14,7 +14,6 @@
 
 #include "tokenpool.h"
 
-#include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <unistd.h>
@@ -22,7 +21,8 @@
 #include <string.h>
 #include <stdlib.h>
 
-TokenPool::TokenPool() : acquired_(false), used_(0), rfd_(-1), wfd_(-1) {
+// every instance owns an implicit token -> available_ == 1
+TokenPool::TokenPool() : available_(1), used_(0), rfd_(-1), wfd_(-1) {
 }
 
 TokenPool::~TokenPool() {
@@ -60,7 +60,7 @@ bool TokenPool::Setup() {
 }
 
 bool TokenPool::Acquire() {
-  if (acquired_)
+  if (available_ > 0)
     return true;
 
 #ifdef USE_PPOLL
@@ -77,7 +77,7 @@ bool TokenPool::Acquire() {
     char buf;
     int ret = read(rfd_, &buf, 1);
     if (ret > 0) {
-      acquired_ = true;
+      available_++;
       return true;
     }
   }
@@ -85,27 +85,26 @@ bool TokenPool::Acquire() {
 }
 
 void TokenPool::Reserve() {
-  acquired_ = false;
+  available_--;
   used_++;
 }
 
 void TokenPool::Return() {
   const char buf = '+';
-  if (write(wfd_, &buf, 1) < 0) {
-    // If the write fails, there's nothing we can do.
-    // But this block seems necessary to silence the warning.
-  }
+  if (write(wfd_, &buf, 1) > 0)
+    available_--;
 }
 
 void TokenPool::Release() {
+  available_++;
   used_--;
-  Return();
+  if (available_ > 1)
+    Return();
 }
 
 void TokenPool::Clear() {
-  if (acquired_)
-    used_++;
-  while (used_-- > 0)
+  while (used_ > 0)
+    Release();
+  while (available_ > 1)
     Return();
-  acquired_ = false;
 }

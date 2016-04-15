@@ -35,7 +35,6 @@ using namespace std;
 #endif
 
 #include "exit_status.h"
-#include "tokenpool.h"
 
 /// Subprocess wraps a single async subprocess.  It is entirely
 /// passive: it expects the caller to notify it when its fds are ready
@@ -89,7 +88,6 @@ struct SubprocessSet {
   bool DoWork();
   Subprocess* NextFinished();
   void Clear();
-  bool CanRunMore();
 
   vector<Subprocess*> running_;
   queue<Subprocess*> finished_;
@@ -111,9 +109,6 @@ struct SubprocessSet {
   struct sigaction old_hup_act_;
   sigset_t old_mask_;
 #endif
-
- private:
-  TokenPool *tokens_;
 };
 
 #endif // NINJA_SUBPROCESS_H_
