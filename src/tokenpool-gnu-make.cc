@@ -22,6 +22,7 @@
 #include <stdlib.h>
 
 // TokenPool implementation for GNU make jobserver
+// (http://make.mad-scientist.net/papers/jobserver-implementation/)
 struct GNUmakeTokenPool : public TokenPool {
   GNUmakeTokenPool();
   virtual ~GNUmakeTokenPool();
