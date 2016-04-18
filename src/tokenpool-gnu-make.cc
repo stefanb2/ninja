@@ -78,7 +78,6 @@ bool GNUmakeTokenPool::Setup() {
       if ((sscanf(jobserver, "--jobserver-fds=%d,%d", &rfd, &wfd) == 2) &&
           CheckFd(rfd) &&
           CheckFd(wfd)) {
-        fprintf(stderr, "FOUND JOBSERVER %d %d\n", rfd, wfd);
         rfd_ = rfd;
         wfd_ = wfd;
         return true;
