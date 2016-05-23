@@ -14,6 +14,7 @@
 
 #include "tokenpool.h"
 
+#include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <unistd.h>
@@ -120,8 +121,14 @@ void GNUmakeTokenPool::Reserve() {
 
 void GNUmakeTokenPool::Return() {
   const char buf = '+';
-  if (write(wfd_, &buf, 1) > 0)
-    available_--;
+  while (1) {
+    int ret = write(wfd_, &buf, 1);
+    if (ret > 0)
+      available_--;
+    if ((ret != -1) || (errno != EINTR))
+      return;
+    // write got interrupted - retry
+  }
 }
 
 void GNUmakeTokenPool::Release() {
