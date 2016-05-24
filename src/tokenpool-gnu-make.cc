@@ -72,11 +72,15 @@ bool GNUmakeTokenPool::CheckFd(int fd) {
 bool GNUmakeTokenPool::Setup() {
   const char *value = getenv("MAKEFLAGS");
   if (value) {
+    // GNU make <= 4.1
     const char *jobserver = strstr(value, "--jobserver-fds=");
+    // GNU make => 4.2
+    if (!jobserver)
+      jobserver = strstr(value, "--jobserver-auth=");
     if (jobserver) {
       int rfd = -1;
       int wfd = -1;
-      if ((sscanf(jobserver, "--jobserver-fds=%d,%d", &rfd, &wfd) == 2) &&
+      if ((sscanf(jobserver, "%*[^=]=%d,%d", &rfd, &wfd) == 2) &&
           CheckFd(rfd) &&
           CheckFd(wfd)) {
         rfd_ = rfd;
