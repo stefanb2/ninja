@@ -18,6 +18,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <unistd.h>
+#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -45,7 +46,14 @@ struct GNUmakeTokenPool : public TokenPool {
   int rfd_;
   int wfd_;
 
+  struct sigaction old_act_;
+  bool restore_;
+
+  static bool interrupted_;
+  static void SetInterruptedFlag(int signum);
+
   bool CheckFd(int fd);
+  bool SetAlarmHandler();
 #endif
 
   void Return();
@@ -53,11 +61,13 @@ struct GNUmakeTokenPool : public TokenPool {
 
 // every instance owns an implicit token -> available_ == 1
 GNUmakeTokenPool::GNUmakeTokenPool() : available_(1), used_(0),
-                                       rfd_(-1), wfd_(-1) {
+                                       rfd_(-1), wfd_(-1), restore_(false) {
 }
 
 GNUmakeTokenPool::~GNUmakeTokenPool() {
   Clear();
+  if (restore_)
+    sigaction(SIGALRM, &old_act_, NULL);
 }
 
 bool GNUmakeTokenPool::CheckFd(int fd) {
@@ -67,6 +77,25 @@ bool GNUmakeTokenPool::CheckFd(int fd) {
   if (ret < 0)
     return false;
   return true;
+}
+
+bool GNUmakeTokenPool::interrupted_;
+
+void GNUmakeTokenPool::SetInterruptedFlag(int signum) {
+  interrupted_ = true;
+}
+
+bool GNUmakeTokenPool::SetAlarmHandler() {
+  struct sigaction act;
+  memset(&act, 0, sizeof(act));
+  act.sa_handler = SetInterruptedFlag;
+  if (sigaction(SIGALRM, &act, NULL) < 0) {
+    perror("sigaction:");
+    return(false);
+  } else {
+    restore_ = true;
+    return(true);
+  }
 }
 
 bool GNUmakeTokenPool::Setup() {
@@ -82,7 +111,8 @@ bool GNUmakeTokenPool::Setup() {
       int wfd = -1;
       if ((sscanf(jobserver, "%*[^=]=%d,%d", &rfd, &wfd) == 2) &&
           CheckFd(rfd) &&
-          CheckFd(wfd)) {
+          CheckFd(wfd) &&
+          SetAlarmHandler()) {
         rfd_ = rfd;
         wfd_ = wfd;
         return true;
@@ -109,11 +139,19 @@ bool GNUmakeTokenPool::Acquire() {
 #endif
   if (ret > 0) {
     char buf;
+
+    interrupted_ = false;
+    alarm(1);
     int ret = read(rfd_, &buf, 1);
+    alarm(0);
+
     if (ret > 0) {
       available_++;
       return true;
     }
+
+    if (interrupted_)
+      perror("blocked on token");
   }
   return false;
 }
