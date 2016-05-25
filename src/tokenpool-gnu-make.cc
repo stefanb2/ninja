@@ -113,6 +113,7 @@ bool GNUmakeTokenPool::Setup() {
           CheckFd(rfd) &&
           CheckFd(wfd) &&
           SetAlarmHandler()) {
+        printf("ninja: using GNU make jobserver.\n");
         rfd_ = rfd;
         wfd_ = wfd;
         return true;
