@@ -89,7 +89,7 @@ bool GNUmakeTokenPool::SetAlarmHandler() {
   struct sigaction act;
   memset(&act, 0, sizeof(act));
   act.sa_handler = SetInterruptedFlag;
-  if (sigaction(SIGALRM, &act, NULL) < 0) {
+  if (sigaction(SIGALRM, &act, &old_act_) < 0) {
     perror("sigaction:");
     return(false);
   } else {
