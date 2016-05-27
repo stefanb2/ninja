@@ -49,8 +49,8 @@ struct GNUmakeTokenPool : public TokenPool {
   struct sigaction old_act_;
   bool restore_;
 
-  static bool interrupted_;
-  static void SetInterruptedFlag(int signum);
+  static int dup_rfd_;
+  static void CloseDupRfd(int signum);
 
   bool CheckFd(int fd);
   bool SetAlarmHandler();
@@ -79,16 +79,17 @@ bool GNUmakeTokenPool::CheckFd(int fd) {
   return true;
 }
 
-bool GNUmakeTokenPool::interrupted_;
+int GNUmakeTokenPool::dup_rfd_ = -1;
 
-void GNUmakeTokenPool::SetInterruptedFlag(int signum) {
-  interrupted_ = true;
+void GNUmakeTokenPool::CloseDupRfd(int signum) {
+  close(dup_rfd_);
+  dup_rfd_ = -1;
 }
 
 bool GNUmakeTokenPool::SetAlarmHandler() {
   struct sigaction act;
   memset(&act, 0, sizeof(act));
-  act.sa_handler = SetInterruptedFlag;
+  act.sa_handler = CloseDupRfd;
   if (sigaction(SIGALRM, &act, &old_act_) < 0) {
     perror("sigaction:");
     return(false);
@@ -139,20 +140,32 @@ bool GNUmakeTokenPool::Acquire() {
   int ret = select(rfd_ + 1, &set, NULL, NULL, &timeout);
 #endif
   if (ret > 0) {
-    char buf;
+    dup_rfd_ = dup(rfd_);
 
-    interrupted_ = false;
-    alarm(1);
-    int ret = read(rfd_, &buf, 1);
-    alarm(0);
+    if (dup_rfd_ != -1) {
+      struct sigaction act, old_act;
+      int ret = 0;
 
-    if (ret > 0) {
-      available_++;
-      return true;
+      memset(&act, 0, sizeof(act));
+      act.sa_handler = CloseDupRfd;
+      if (sigaction(SIGCHLD, &act, &old_act) == 0) {
+        char buf;
+
+        // block until token read, child exits or timeout
+        alarm(1);
+        ret = read(dup_rfd_, &buf, 1);
+        alarm(0);
+
+        sigaction(SIGCHLD, &old_act, NULL);
+      }
+
+      CloseDupRfd(0);
+
+      if (ret > 0) {
+        available_++;
+        return true;
+      }
     }
-
-    if (interrupted_)
-      perror("blocked on token");
   }
   return false;
 }
