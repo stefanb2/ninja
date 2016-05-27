@@ -77,6 +77,8 @@ struct Subprocess {
   friend struct SubprocessSet;
 };
 
+struct TokenPool;
+
 /// SubprocessSet runs a ppoll/pselect() loop around a set of Subprocesses.
 /// DoWork() waits for any state change in subprocesses; finished_
 /// is a queue of subprocesses as they finish.
@@ -85,7 +87,7 @@ struct SubprocessSet {
   ~SubprocessSet();
 
   Subprocess* Add(const string& command, bool use_console = false);
-  bool DoWork();
+  bool DoWork(struct TokenPool* tokens);
   Subprocess* NextFinished();
   void Clear();
 

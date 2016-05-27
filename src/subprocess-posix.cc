@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "subprocess.h"
+#include "tokenpool.h"
 
 #include <sys/select.h>
 #include <assert.h>
@@ -232,7 +233,7 @@ Subprocess *SubprocessSet::Add(const string& command, bool use_console) {
 }
 
 #ifdef USE_PPOLL
-bool SubprocessSet::DoWork() {
+bool SubprocessSet::DoWork(struct TokenPool* tokens) {
   vector<pollfd> fds;
   nfds_t nfds = 0;
 
@@ -242,6 +243,12 @@ bool SubprocessSet::DoWork() {
     if (fd < 0)
       continue;
     pollfd pfd = { fd, POLLIN | POLLPRI, 0 };
+    fds.push_back(pfd);
+    ++nfds;
+  }
+
+  if (tokens) {
+    pollfd pfd = { tokens->GetMonitorFd(), POLLIN | POLLPRI, 0 };
     fds.push_back(pfd);
     ++nfds;
   }
@@ -282,7 +289,7 @@ bool SubprocessSet::DoWork() {
 }
 
 #else  // !defined(USE_PPOLL)
-bool SubprocessSet::DoWork() {
+bool SubprocessSet::DoWork(struct TokenPool* tokens) {
   fd_set set;
   int nfds = 0;
   FD_ZERO(&set);
@@ -295,6 +302,13 @@ bool SubprocessSet::DoWork() {
       if (nfds < fd+1)
         nfds = fd+1;
     }
+  }
+
+  if (tokens) {
+    int fd = tokens->GetMonitorFd();
+    FD_SET(fd, &set);
+    if (nfds < fd+1)
+      nfds = fd+1;
   }
 
   interrupted_ = 0;

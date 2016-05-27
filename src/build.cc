@@ -728,7 +728,7 @@ bool RealCommandRunner::StartCommand(Edge* edge) {
 bool RealCommandRunner::WaitForCommand(Result* result) {
   Subprocess* subproc;
   while ((subproc = subprocs_.NextFinished()) == NULL) {
-    bool interrupted = subprocs_.DoWork();
+    bool interrupted = subprocs_.DoWork(tokens_);
     if (interrupted)
       return false;
   }
