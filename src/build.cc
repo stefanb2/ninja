@@ -727,12 +727,21 @@ bool RealCommandRunner::StartCommand(Edge* edge) {
 
 bool RealCommandRunner::WaitForCommand(Result* result, bool more_ready) {
   Subprocess* subproc;
-  while ((subproc = subprocs_.NextFinished()) == NULL) {
+  subprocs_.ResetTokenAvailable();
+  while (((subproc = subprocs_.NextFinished()) == NULL) &&
+         !subprocs_.IsTokenAvailable()) {
     bool interrupted = subprocs_.DoWork(more_ready ? tokens_ : NULL);
     if (interrupted)
       return false;
   }
 
+  // token became available
+  if (subproc == NULL) {
+    result->status = ExitTokenAvailable;
+    return true;
+  }
+
+  // command completed
   if (tokens_)
     tokens_->Release();
 
@@ -879,6 +888,10 @@ bool Builder::Build(string* err) {
         *err = "interrupted by user";
         return false;
       }
+
+      // We might be able to start another command; start the main loop over.
+      if (result.status == ExitTokenAvailable)
+        continue;
 
       --pending_commands;
       if (!FinishCommand(&result, err)) {
