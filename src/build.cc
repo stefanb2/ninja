@@ -49,6 +49,7 @@ struct DryRunCommandRunner : public CommandRunner {
 
   // Overridden from CommandRunner:
   virtual bool CanRunMore() const;
+  virtual bool AcquireToken();
   virtual bool StartCommand(Edge* edge);
   virtual bool WaitForCommand(Result* result, bool more_ready);
 
@@ -57,6 +58,10 @@ struct DryRunCommandRunner : public CommandRunner {
 };
 
 bool DryRunCommandRunner::CanRunMore() const {
+  return true;
+}
+
+bool DryRunCommandRunner::AcquireToken() {
   return true;
 }
 
@@ -670,6 +675,7 @@ struct RealCommandRunner : public CommandRunner {
   explicit RealCommandRunner(const BuildConfig& config);
   virtual ~RealCommandRunner();
   virtual bool CanRunMore() const;
+  virtual bool AcquireToken();
   virtual bool StartCommand(Edge* edge);
   virtual bool WaitForCommand(Result* result, bool more_ready);
   virtual vector<Edge*> GetActiveEdges();
@@ -708,9 +714,12 @@ bool RealCommandRunner::CanRunMore() const {
       subprocs_.running_.size() + subprocs_.finished_.size();
   return (int)subproc_number < config_.parallelism
     && (subprocs_.running_.empty() ||
-        ((config_.max_load_average <= 0.0f ||
-          GetLoadAverage() < config_.max_load_average)
-      && (!tokens_ || tokens_->Acquire())));
+        (config_.max_load_average <= 0.0f ||
+         GetLoadAverage() < config_.max_load_average));
+}
+
+bool RealCommandRunner::AcquireToken() {
+  return (!tokens_ || tokens_->Acquire());
 }
 
 bool RealCommandRunner::StartCommand(Edge* edge) {
@@ -854,9 +863,14 @@ bool Builder::Build(string* err) {
   // command runner.
   // Second, we attempt to wait for / reap the next finished command.
   while (plan_.more_to_do()) {
-    // See if we can start any more commands.
-    if (failures_allowed && plan_.more_ready() &&
-        command_runner_->CanRunMore()) {
+    // See if we can start any more commands...
+    bool can_run_more =
+        failures_allowed   &&
+        plan_.more_ready() &&
+        command_runner_->CanRunMore();
+
+    // ... but we also need a token to do that.
+    if (can_run_more && command_runner_->AcquireToken()) {
       Edge* edge = plan_.FindWork();
       if (!StartEdge(edge, err)) {
         Cleanup();
@@ -881,7 +895,7 @@ bool Builder::Build(string* err) {
     // See if we can reap any finished commands.
     if (pending_commands) {
       CommandRunner::Result result;
-      if (!command_runner_->WaitForCommand(&result, plan_.more_ready()) ||
+      if (!command_runner_->WaitForCommand(&result, can_run_more) ||
           result.status == ExitInterrupted) {
         Cleanup();
         status_->BuildFinished();
