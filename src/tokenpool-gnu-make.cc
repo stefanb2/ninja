@@ -19,6 +19,7 @@
 #include <poll.h>
 #include <unistd.h>
 #include <signal.h>
+#include <sys/time.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -189,22 +190,29 @@ bool GNUmakeTokenPool::Acquire() {
       memset(&act, 0, sizeof(act));
       act.sa_handler = CloseDupRfd;
       if (sigaction(SIGCHLD, &act, &old_act) == 0) {
-        char buf;
+        struct itimerval timeout;
 
-        alarm(1);
+        // install a 100ms timeout that generates SIGALARM on expiration
+        memset(&timeout, 0, sizeof(timeout));
+        timeout.it_value.tv_usec = 100 * 1000; // [ms] -> [usec]
+        if (setitimer(ITIMER_REAL, &timeout, NULL) == 0) {
+          char buf;
 
-        // Now try to read() from dup_rfd_. Return values from read():
-        //
-        // 1. token read                               ->  1
-        // 2. pipe closed                              ->  0
-        // 3. alarm expires                            -> -1 (EINTR)
-        // 4. child exits                              -> -1 (EINTR)
-        // 5. alarm expired before entering read()     -> -1 (EBADF)
-        // 6. child exited before entering read()      -> -1 (EBADF)
-        // 7. child exited before handler is installed -> go to 1 - 3
-        ret = read(dup_rfd_, &buf, 1);
+          // Now try to read() from dup_rfd_. Return values from read():
+          //
+          // 1. token read                               ->  1
+          // 2. pipe closed                              ->  0
+          // 3. alarm expires                            -> -1 (EINTR)
+          // 4. child exits                              -> -1 (EINTR)
+          // 5. alarm expired before entering read()     -> -1 (EBADF)
+          // 6. child exited before entering read()      -> -1 (EBADF)
+          // 7. child exited before handler is installed -> go to 1 - 3
+          ret = read(dup_rfd_, &buf, 1);
 
-        alarm(0);
+          // disarm timer
+          memset(&timeout, 0, sizeof(timeout));
+          setitimer(ITIMER_REAL, &timeout, NULL);
+        }
 
         sigaction(SIGCHLD, &old_act, NULL);
       }
@@ -221,7 +229,7 @@ bool GNUmakeTokenPool::Acquire() {
 
   // read() would block, i.e. no token available,
   // cases 2-6 from above list or
-  // select() / poll() / dup() / sigaction() failed
+  // select() / poll() / dup() / sigaction() / setitimer() failed
   return false;
 }
 
