@@ -121,4 +121,78 @@ TEST_F(TokenPoolTest, MonitorFD) {
 
   EXPECT_EQ(fds_[0], tokens_->GetMonitorFd());
 }
+
+TEST_F(TokenPoolTest, ImplicitToken) {
+  CreateDefaultPool();
+
+  ASSERT_NE(NULL, tokens_);
+  EXPECT_EQ(kLoadAverageDefault, load_avg_);
+
+  EXPECT_TRUE(tokens_->Acquire());
+  tokens_->Reserve();
+  EXPECT_FALSE(tokens_->Acquire());
+  tokens_->Release();
+  EXPECT_TRUE(tokens_->Acquire());
+}
+
+TEST_F(TokenPoolTest, TwoTokens) {
+  CreateDefaultPool();
+
+  ASSERT_NE(NULL, tokens_);
+  EXPECT_EQ(kLoadAverageDefault, load_avg_);
+
+  // implicit token
+  EXPECT_TRUE(tokens_->Acquire());
+  tokens_->Reserve();
+  EXPECT_FALSE(tokens_->Acquire());
+
+  // jobserver offers 2nd token
+  ASSERT_EQ(1u, write(fds_[1], "T", 1));
+  EXPECT_TRUE(tokens_->Acquire());
+  tokens_->Reserve();
+  EXPECT_FALSE(tokens_->Acquire());
+
+  // release 2nd token
+  tokens_->Release();
+  EXPECT_TRUE(tokens_->Acquire());
+
+  // release implict token - must return 2nd token back to jobserver
+  tokens_->Release();
+  EXPECT_TRUE(tokens_->Acquire());
+
+  // there must be one token in the pipe
+  EXPECT_EQ(1u, read(fds_[0], buf_, sizeof(buf_)));
+
+  // implicit token
+  EXPECT_TRUE(tokens_->Acquire());
+}
+
+TEST_F(TokenPoolTest, Clear) {
+  CreateDefaultPool();
+
+  ASSERT_NE(NULL, tokens_);
+  EXPECT_EQ(kLoadAverageDefault, load_avg_);
+
+  // implicit token
+  EXPECT_TRUE(tokens_->Acquire());
+  tokens_->Reserve();
+  EXPECT_FALSE(tokens_->Acquire());
+
+  // jobserver offers 2nd & 3rd token
+  ASSERT_EQ(2u, write(fds_[1], "TT", 2));
+  EXPECT_TRUE(tokens_->Acquire());
+  tokens_->Reserve();
+  EXPECT_TRUE(tokens_->Acquire());
+  tokens_->Reserve();
+  EXPECT_FALSE(tokens_->Acquire());
+
+  tokens_->Clear();
+  EXPECT_TRUE(tokens_->Acquire());
+
+  // there must be two tokens in the pipe
+  EXPECT_EQ(2u, read(fds_[0], buf_, sizeof(buf_)));
+
+  // implicit token
+  EXPECT_TRUE(tokens_->Acquire());
+}
 #endif
