@@ -112,4 +112,13 @@ TEST_F(TokenPoolTest, HonorLN) {
   EXPECT_NE(NULL, tokens_);
   EXPECT_EQ(9.0, load_avg_);
 }
+
+TEST_F(TokenPoolTest, MonitorFD) {
+  CreateDefaultPool();
+
+  ASSERT_NE(NULL, tokens_);
+  EXPECT_EQ(kLoadAverageDefault, load_avg_);
+
+  EXPECT_EQ(fds_[0], tokens_->GetMonitorFd());
+}
 #endif
