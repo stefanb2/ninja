@@ -3459,6 +3459,16 @@ void BuildTokenTest::EnqueueBooleans(vector<bool>& booleans, int count, va_list 
   }
 }
 
+TEST_F(BuildTokenTest, CompleteNoWork) {
+  // plan should not execute anything
+  string err;
+
+  EXPECT_TRUE(builder_.Build(&err));
+  EXPECT_EQ("", err);
+
+  EXPECT_EQ(0u, token_command_runner_.commands_ran_.size());
+}
+
 TEST_F(BuildTokenTest, DoNotAquireToken) {
   // plan should execute one command
   string err;
@@ -3488,6 +3498,25 @@ TEST_F(BuildTokenTest, DoNotStartWithoutToken) {
   EXPECT_EQ("stuck [this is a bug]", err);
 
   EXPECT_EQ(0u, token_command_runner_.commands_ran_.size());
+}
+
+TEST_F(BuildTokenTest, CompleteOneStep) {
+  // plan should execute one command
+  string err;
+  EXPECT_TRUE(builder_.AddTarget("cat1", &err));
+  ASSERT_EQ("", err);
+
+  // allow running of one command
+  ExpectCanRunMore(1,   true);
+  ExpectAcquireToken(1, true);
+  // block and wait for command to finalize
+  ExpectWaitForCommand(1, false);
+
+  EXPECT_TRUE(builder_.Build(&err));
+  EXPECT_EQ("", err);
+
+  EXPECT_EQ(1u, token_command_runner_.commands_ran_.size());
+  EXPECT_TRUE(token_command_runner_.commands_ran_[0] == "cat in1 > cat1");
 }
 
 TEST_F(BuildTokenTest, AcquireOneToken) {
@@ -3532,6 +3561,30 @@ TEST_F(BuildTokenTest, WantTwoTokens) {
               token_command_runner_.commands_ran_[0] == "cat in1 in2 > cat2");
 }
 
+TEST_F(BuildTokenTest, CompleteTwoSteps) {
+  ASSERT_NO_FATAL_FAILURE(AssertParse(&state_,
+"build out1: cat in1\n"
+"build out2: cat out1\n"));
+
+  // plan should execute more than one command
+  string err;
+  EXPECT_TRUE(builder_.AddTarget("out2", &err));
+  ASSERT_EQ("", err);
+
+  // allow running of two commands
+  ExpectCanRunMore(2,     true, true);
+  ExpectAcquireToken(2,   true, true);
+  // wait for commands to finalize
+  ExpectWaitForCommand(2, false, false);
+
+  EXPECT_TRUE(builder_.Build(&err));
+  EXPECT_EQ("", err);
+
+  EXPECT_EQ(2u, token_command_runner_.commands_ran_.size());
+  EXPECT_TRUE(token_command_runner_.commands_ran_[0] == "cat in1 > out1");
+  EXPECT_TRUE(token_command_runner_.commands_ran_[1] == "cat out1 > out2");
+}
+
 TEST_F(BuildTokenTest, TwoCommandsInParallel) {
   ASSERT_NO_FATAL_FAILURE(AssertParse(&state_,
 "rule token-available\n"
@@ -3562,4 +3615,57 @@ TEST_F(BuildTokenTest, TwoCommandsInParallel) {
                token_command_runner_.commands_ran_[1] == "cat in2 > out2") ||
               (token_command_runner_.commands_ran_[0] == "cat in2 > out2" &&
                token_command_runner_.commands_ran_[1] == "cat in1 > out1"));
+}
+
+TEST_F(BuildTokenTest, CompleteThreeStepsSerial) {
+  // plan should execute more than one command
+  string err;
+  EXPECT_TRUE(builder_.AddTarget("cat12", &err));
+  ASSERT_EQ("", err);
+
+  // allow running of all commands
+  ExpectCanRunMore(4,     true, true,  true,  true);
+  ExpectAcquireToken(4,   true, false, true,  true);
+  // wait for commands to finalize
+  ExpectWaitForCommand(3, true, false, false);
+
+  EXPECT_TRUE(builder_.Build(&err));
+  EXPECT_EQ("", err);
+
+  EXPECT_EQ(3u, token_command_runner_.commands_ran_.size());
+  EXPECT_TRUE((token_command_runner_.commands_ran_[0] == "cat in1 > cat1"     &&
+               token_command_runner_.commands_ran_[1] == "cat in1 in2 > cat2") ||
+              (token_command_runner_.commands_ran_[0] == "cat in1 in2 > cat2" &&
+               token_command_runner_.commands_ran_[1] == "cat in1 > cat1"    ));
+  EXPECT_TRUE(token_command_runner_.commands_ran_[2] == "cat cat1 cat2 > cat12");
+}
+
+TEST_F(BuildTokenTest, CompleteThreeStepsParallel) {
+  ASSERT_NO_FATAL_FAILURE(AssertParse(&state_,
+"rule token-available\n"
+"  command = cat $in > $out\n"
+"build out1: token-available in1\n"
+"build out2: token-available in2\n"
+"build out12: cat out1 out2\n"));
+
+  // plan should execute more than one command
+  string err;
+  EXPECT_TRUE(builder_.AddTarget("out12", &err));
+  ASSERT_EQ("", err);
+
+  // allow running of all commands
+  ExpectCanRunMore(4,     true, true,  true,  true);
+  ExpectAcquireToken(4,   true, false, true,  true);
+  // wait for commands to finalize
+  ExpectWaitForCommand(4, true, false, false, false);
+
+  EXPECT_TRUE(builder_.Build(&err));
+  EXPECT_EQ("", err);
+
+  EXPECT_EQ(3u, token_command_runner_.commands_ran_.size());
+  EXPECT_TRUE((token_command_runner_.commands_ran_[0] == "cat in1 > out1" &&
+               token_command_runner_.commands_ran_[1] == "cat in2 > out2") ||
+              (token_command_runner_.commands_ran_[0] == "cat in2 > out2" &&
+               token_command_runner_.commands_ran_[1] == "cat in1 > out1"));
+  EXPECT_TRUE(token_command_runner_.commands_ran_[2] == "cat out1 out2 > out12");
 }
