@@ -3313,8 +3313,7 @@ TEST_F(BuildTest, DyndepTwoLevelDiscoveredDirty) {
 
 /// Fake implementation of CommandRunner that simulates a TokenPool
 struct FakeTokenCommandRunner : public CommandRunner {
-  explicit FakeTokenCommandRunner() :
-      can_run_more_count_(0), acquire_token_count_(0) {}
+  explicit FakeTokenCommandRunner() {}
 
   // CommandRunner impl
   virtual bool CanRunMore() const;
@@ -3326,32 +3325,36 @@ struct FakeTokenCommandRunner : public CommandRunner {
 
   vector<string> commands_ran_;
   vector<Edge *> edges_;
-  vector<bool> can_run_more_;
-  vector<bool> acquire_token_;
-  unsigned int can_run_more_count_;
-  unsigned int acquire_token_count_;
-  vector<bool> more_ready_;
 
-  void SetCanRunMore(int count, ...);
-  void SetAcquireToken(int count, ...);
+  vector<bool> acquire_token_;
+  vector<bool> can_run_more_;
+  vector<bool> wait_for_command_;
 };
 
 bool FakeTokenCommandRunner::CanRunMore() const {
-  bool result = false;
-  if (can_run_more_.size() > can_run_more_count_)
-    result = can_run_more_[can_run_more_count_];
+  if (can_run_more_.size() == 0) {
+    EXPECT_FALSE("unexpected call to CommandRunner::CanRunMore()");
+    return false;
+  }
+
+  bool result = can_run_more_[0];
 
   // Unfortunately CanRunMore() isn't "const" for tests
-  const_cast<FakeTokenCommandRunner*>(this)->can_run_more_count_++;
+  const_cast<FakeTokenCommandRunner*>(this)->can_run_more_.erase(
+    const_cast<FakeTokenCommandRunner*>(this)->can_run_more_.begin()
+  );
 
   return result;
 }
 
 bool FakeTokenCommandRunner::AcquireToken() {
-  bool result = false;
-  if (acquire_token_.size() > acquire_token_count_)
-    result = acquire_token_[acquire_token_count_];
-  acquire_token_count_++;
+  if (acquire_token_.size() == 0) {
+    EXPECT_FALSE("unexpected call to CommandRunner::AcquireToken()");
+    return false;
+  }
+
+  bool result = acquire_token_[0];
+  acquire_token_.erase(acquire_token_.begin());
   return result;
 }
 
@@ -3362,7 +3365,17 @@ bool FakeTokenCommandRunner::StartCommand(Edge* edge) {
 }
 
 bool FakeTokenCommandRunner::WaitForCommand(Result* result, bool more_ready) {
-  more_ready_.push_back(more_ready);
+  if (wait_for_command_.size() == 0) {
+    EXPECT_FALSE("unexpected call to CommandRunner::WaitForCommand()");
+    return false;
+  }
+
+  bool expected = wait_for_command_[0];
+  if (expected != more_ready) {
+    EXPECT_EQ(expected, more_ready);
+    return false;
+  }
+  wait_for_command_.erase(wait_for_command_.begin());
 
   if (edges_.size() == 0)
     return false;
@@ -3389,37 +3402,62 @@ void FakeTokenCommandRunner::Abort() {
   edges_.clear();
 }
 
-// helpers for pre-C++11
-void FakeTokenCommandRunner::SetCanRunMore(int count, ...) {
-  va_list ap;
-  va_start(ap, count);
-  while (count--) {
-    int value = va_arg(ap, int);
-    can_run_more_.push_back(!!value); // force bool
-  }
-  va_end(ap);
-}
-void FakeTokenCommandRunner::SetAcquireToken(int count, ...) {
-  va_list ap;
-  va_start(ap, count);
-  while (count--) {
-    int value = va_arg(ap, int);
-    acquire_token_.push_back(!!value); // force bool
-  }
-  va_end(ap);
-}
-
 struct BuildTokenTest : public BuildTest {
-  virtual void SetUp() {
-    BuildTest::SetUp();
-
-    // replace FakeCommandRunner with FakeTokenCommandRunner
-    builder_.command_runner_.release();
-    builder_.command_runner_.reset(&token_command_runner_);
-  }
+  virtual void SetUp();
+  virtual void TearDown();
 
   FakeTokenCommandRunner token_command_runner_;
+
+  void ExpectAcquireToken(int count, ...);
+  void ExpectCanRunMore(int count, ...);
+  void ExpectWaitForCommand(int count, ...);
+
+private:
+  void EnqueueBooleans(vector<bool>& booleans, int count, va_list ao);
 };
+
+void BuildTokenTest::SetUp() {
+  BuildTest::SetUp();
+
+  // replace FakeCommandRunner with FakeTokenCommandRunner
+  builder_.command_runner_.release();
+  builder_.command_runner_.reset(&token_command_runner_);
+}
+void BuildTokenTest::TearDown() {
+  EXPECT_EQ(0u, token_command_runner_.acquire_token_.size());
+  EXPECT_EQ(0u, token_command_runner_.can_run_more_.size());
+  EXPECT_EQ(0u, token_command_runner_.wait_for_command_.size());
+
+  BuildTest::TearDown();
+}
+
+void BuildTokenTest::ExpectAcquireToken(int count, ...) {
+  va_list ap;
+  va_start(ap, count);
+  EnqueueBooleans(token_command_runner_.acquire_token_, count, ap);
+  va_end(ap);
+}
+
+void BuildTokenTest::ExpectCanRunMore(int count, ...) {
+  va_list ap;
+  va_start(ap, count);
+  EnqueueBooleans(token_command_runner_.can_run_more_, count, ap);
+  va_end(ap);
+}
+
+void BuildTokenTest::ExpectWaitForCommand(int count, ...) {
+  va_list ap;
+  va_start(ap, count);
+  EnqueueBooleans(token_command_runner_.wait_for_command_, count, ap);
+  va_end(ap);
+}
+
+void BuildTokenTest::EnqueueBooleans(vector<bool>& booleans, int count, va_list ap) {
+  while (count--) {
+    int value = va_arg(ap, int);
+    booleans.push_back(!!value); // force bool
+  }
+}
 
 TEST_F(BuildTokenTest, DoNotAquireToken) {
   // plan should execute one command
@@ -3427,13 +3465,13 @@ TEST_F(BuildTokenTest, DoNotAquireToken) {
   EXPECT_TRUE(builder_.AddTarget("cat1", &err));
   ASSERT_EQ("", err);
 
+  // pretend we can't run anything
+  ExpectCanRunMore(1, false);
+
   EXPECT_FALSE(builder_.Build(&err));
   EXPECT_EQ("stuck [this is a bug]", err);
 
-  EXPECT_EQ(1u, token_command_runner_.can_run_more_count_);
-  EXPECT_EQ(0u, token_command_runner_.acquire_token_count_);
   EXPECT_EQ(0u, token_command_runner_.commands_ran_.size());
-  EXPECT_EQ(0u, token_command_runner_.more_ready_.size());
 }
 
 TEST_F(BuildTokenTest, DoNotStartWithoutToken) {
@@ -3443,15 +3481,13 @@ TEST_F(BuildTokenTest, DoNotStartWithoutToken) {
   ASSERT_EQ("", err);
 
   // we could run a command but do not have a token for it
-  token_command_runner_.SetCanRunMore(1, true);
+  ExpectCanRunMore(1,   true);
+  ExpectAcquireToken(1, false);
 
   EXPECT_FALSE(builder_.Build(&err));
   EXPECT_EQ("stuck [this is a bug]", err);
 
-  EXPECT_EQ(1u, token_command_runner_.can_run_more_count_);
-  EXPECT_EQ(1u, token_command_runner_.acquire_token_count_);
   EXPECT_EQ(0u, token_command_runner_.commands_ran_.size());
-  EXPECT_EQ(0u, token_command_runner_.more_ready_.size());
 }
 
 TEST_F(BuildTokenTest, AcquireOneToken) {
@@ -3461,22 +3497,18 @@ TEST_F(BuildTokenTest, AcquireOneToken) {
   ASSERT_EQ("", err);
 
   // allow running of one command
-  token_command_runner_.SetCanRunMore(1,   true);
-  token_command_runner_.SetAcquireToken(1, true);
+  ExpectCanRunMore(3,     true, false, false);
+  ExpectAcquireToken(1,   true);
+  // block and wait for command to finalize
+  ExpectWaitForCommand(1, false);
 
   EXPECT_FALSE(builder_.Build(&err));
   EXPECT_EQ("stuck [this is a bug]", err);
 
-  EXPECT_EQ(3u, token_command_runner_.can_run_more_count_);
-  EXPECT_EQ(1u, token_command_runner_.acquire_token_count_);
   EXPECT_EQ(1u, token_command_runner_.commands_ran_.size());
   // any of the two dependencies could have been executed
   EXPECT_TRUE(token_command_runner_.commands_ran_[0] == "cat in1 > cat1" ||
               token_command_runner_.commands_ran_[0] == "cat in1 in2 > cat2");
-
-  // block and wait for command to finalize
-  EXPECT_EQ(1u, token_command_runner_.more_ready_.size());
-  EXPECT_FALSE(token_command_runner_.more_ready_[0]);
 }
 
 TEST_F(BuildTokenTest, WantTwoTokens) {
@@ -3486,22 +3518,18 @@ TEST_F(BuildTokenTest, WantTwoTokens) {
   ASSERT_EQ("", err);
 
   // allow running of one command
-  token_command_runner_.SetCanRunMore(2,   true, true);
-  token_command_runner_.SetAcquireToken(1, true);
+  ExpectCanRunMore(3,     true, true, false);
+  ExpectAcquireToken(2,   true, false);
+  // wait for command to finalize or token to become available
+  ExpectWaitForCommand(1, true);
 
   EXPECT_FALSE(builder_.Build(&err));
   EXPECT_EQ("stuck [this is a bug]", err);
 
-  EXPECT_EQ(3u, token_command_runner_.can_run_more_count_);
-  EXPECT_EQ(2u, token_command_runner_.acquire_token_count_);
   EXPECT_EQ(1u, token_command_runner_.commands_ran_.size());
   // any of the two dependencies could have been executed
   EXPECT_TRUE(token_command_runner_.commands_ran_[0] == "cat in1 > cat1" ||
               token_command_runner_.commands_ran_[0] == "cat in1 in2 > cat2");
-
-  // wait for command to finalize or token to become available
-  EXPECT_EQ(1u, token_command_runner_.more_ready_.size());
-  EXPECT_TRUE(token_command_runner_.more_ready_[0]);
 }
 
 TEST_F(BuildTokenTest, TwoCommandsInParallel) {
@@ -3519,25 +3547,19 @@ TEST_F(BuildTokenTest, TwoCommandsInParallel) {
 
   // 1st command: token available -> allow running
   // 2nd command: no token available but becomes available later
-  token_command_runner_.SetCanRunMore(3,   true, true, true);
-  token_command_runner_.SetAcquireToken(3, true, false, true);
+  ExpectCanRunMore(4,     true, true,  true,  false);
+  ExpectAcquireToken(3,   true, false, true);
+  // 1st call waits for command to finalize or token to become available
+  // 2nd call waits for command to finalize
+  // 3rd call waits for command to finalize
+  ExpectWaitForCommand(3, true, false, false);
 
   EXPECT_FALSE(builder_.Build(&err));
   EXPECT_EQ("stuck [this is a bug]", err);
 
-  EXPECT_EQ(4u, token_command_runner_.can_run_more_count_);
-  EXPECT_EQ(3u, token_command_runner_.acquire_token_count_);
   EXPECT_EQ(2u, token_command_runner_.commands_ran_.size());
   EXPECT_TRUE((token_command_runner_.commands_ran_[0] == "cat in1 > out1" &&
                token_command_runner_.commands_ran_[1] == "cat in2 > out2") ||
               (token_command_runner_.commands_ran_[0] == "cat in2 > out2" &&
                token_command_runner_.commands_ran_[1] == "cat in1 > out1"));
-
-  // 1st call waits for command to finalize or token to become available
-  // 2nd call waits for command to finalize
-  // 3rd call waits for command to finalize
-  EXPECT_EQ(3u, token_command_runner_.more_ready_.size());
-  EXPECT_TRUE(token_command_runner_.more_ready_[0]);
-  EXPECT_FALSE(token_command_runner_.more_ready_[1]);
-  EXPECT_FALSE(token_command_runner_.more_ready_[2]);
 }
