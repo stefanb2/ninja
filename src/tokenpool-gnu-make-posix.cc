@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tokenpool.h"
+#include "tokenpool-gnu-make.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -24,29 +24,19 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "line_printer.h"
-
 // TokenPool implementation for GNU make jobserver - POSIX implementation
 // (http://make.mad-scientist.net/papers/jobserver-implementation/)
-struct GNUmakeTokenPool : public TokenPool {
-  GNUmakeTokenPool();
-  virtual ~GNUmakeTokenPool();
+struct GNUmakeTokenPoolPosix : public GNUmakeTokenPool {
+  GNUmakeTokenPoolPosix();
+  virtual ~GNUmakeTokenPoolPosix();
 
-  virtual bool Acquire();
-  virtual void Reserve();
-  virtual void Release();
-  virtual void Clear();
   virtual int GetMonitorFd();
 
-  bool Setup(bool ignore, bool verbose, double& max_load_average);
+  virtual bool ParseAuth(const char *jobserver);
+  virtual bool AcquireToken();
+  virtual bool ReturnToken();
 
  private:
-  int available_;
-  int used_;
-
-#ifdef _WIN32
-  // @TODO
-#else
   int rfd_;
   int wfd_;
 
@@ -58,23 +48,18 @@ struct GNUmakeTokenPool : public TokenPool {
 
   bool CheckFd(int fd);
   bool SetAlarmHandler();
-#endif
-
-  void Return();
 };
 
-// every instance owns an implicit token -> available_ == 1
-GNUmakeTokenPool::GNUmakeTokenPool() : available_(1), used_(0),
-                                       rfd_(-1), wfd_(-1), restore_(false) {
+GNUmakeTokenPoolPosix::GNUmakeTokenPoolPosix() : rfd_(-1), wfd_(-1), restore_(false) {
 }
 
-GNUmakeTokenPool::~GNUmakeTokenPool() {
+GNUmakeTokenPoolPosix::~GNUmakeTokenPoolPosix() {
   Clear();
   if (restore_)
     sigaction(SIGALRM, &old_act_, NULL);
 }
 
-bool GNUmakeTokenPool::CheckFd(int fd) {
+bool GNUmakeTokenPoolPosix::CheckFd(int fd) {
   if (fd < 0)
     return false;
   int ret = fcntl(fd, F_GETFD);
@@ -83,14 +68,14 @@ bool GNUmakeTokenPool::CheckFd(int fd) {
   return true;
 }
 
-int GNUmakeTokenPool::dup_rfd_ = -1;
+int GNUmakeTokenPoolPosix::dup_rfd_ = -1;
 
-void GNUmakeTokenPool::CloseDupRfd(int signum) {
+void GNUmakeTokenPoolPosix::CloseDupRfd(int signum) {
   close(dup_rfd_);
   dup_rfd_ = -1;
 }
 
-bool GNUmakeTokenPool::SetAlarmHandler() {
+bool GNUmakeTokenPoolPosix::SetAlarmHandler() {
   struct sigaction act;
   memset(&act, 0, sizeof(act));
   act.sa_handler = CloseDupRfd;
@@ -103,57 +88,22 @@ bool GNUmakeTokenPool::SetAlarmHandler() {
   }
 }
 
-bool GNUmakeTokenPool::Setup(bool ignore,
-                             bool verbose,
-                             double& max_load_average) {
-  const char *value = getenv("MAKEFLAGS");
-  if (value) {
-    // GNU make <= 4.1
-    const char *jobserver = strstr(value, "--jobserver-fds=");
-    // GNU make => 4.2
-    if (!jobserver)
-      jobserver = strstr(value, "--jobserver-auth=");
-    if (jobserver) {
-      LinePrinter printer;
-
-      if (ignore) {
-        printer.PrintOnNewLine("ninja: warning: -jN forced on command line; ignoring GNU make jobserver.\n");
-      } else {
-        int rfd = -1;
-        int wfd = -1;
-        if ((sscanf(jobserver, "%*[^=]=%d,%d", &rfd, &wfd) == 2) &&
-            CheckFd(rfd) &&
-            CheckFd(wfd) &&
-            SetAlarmHandler()) {
-          const char *l_arg = strstr(value, " -l");
-          int load_limit = -1;
-
-          if (verbose) {
-            printer.PrintOnNewLine("ninja: using GNU make jobserver.\n");
-          }
-          rfd_ = rfd;
-          wfd_ = wfd;
-
-          // translate GNU make -lN to ninja -lN
-          if (l_arg &&
-              (sscanf(l_arg + 3, "%d ", &load_limit) == 1) &&
-              (load_limit > 0)) {
-            max_load_average = load_limit;
-          }
-
-          return true;
-        }
-      }
-    }
+bool GNUmakeTokenPoolPosix::ParseAuth(const char *jobserver) {
+  int rfd = -1;
+  int wfd = -1;
+  if ((sscanf(jobserver, "%*[^=]=%d,%d", &rfd, &wfd) == 2) &&
+      CheckFd(rfd) &&
+      CheckFd(wfd) &&
+      SetAlarmHandler()) {
+    rfd_ = rfd;
+    wfd_ = wfd;
+    return true;
   }
 
   return false;
 }
 
-bool GNUmakeTokenPool::Acquire() {
-  if (available_ > 0)
-    return true;
-
+bool GNUmakeTokenPoolPosix::AcquireToken() {
   // Please read
   //
   //   http://make.mad-scientist.net/papers/jobserver-implementation/
@@ -220,10 +170,8 @@ bool GNUmakeTokenPool::Acquire() {
       CloseDupRfd(0);
 
       // Case 1 from above list
-      if (ret > 0) {
-        available_++;
+      if (ret > 0)
         return true;
-      }
     }
   }
 
@@ -233,45 +181,26 @@ bool GNUmakeTokenPool::Acquire() {
   return false;
 }
 
-void GNUmakeTokenPool::Reserve() {
-  available_--;
-  used_++;
-}
-
-void GNUmakeTokenPool::Return() {
+bool GNUmakeTokenPoolPosix::ReturnToken() {
   const char buf = '+';
   while (1) {
     int ret = write(wfd_, &buf, 1);
     if (ret > 0)
-      available_--;
+      return true;
     if ((ret != -1) || (errno != EINTR))
-      return;
+      return false;
     // write got interrupted - retry
   }
 }
 
-void GNUmakeTokenPool::Release() {
-  available_++;
-  used_--;
-  if (available_ > 1)
-    Return();
-}
-
-void GNUmakeTokenPool::Clear() {
-  while (used_ > 0)
-    Release();
-  while (available_ > 1)
-    Return();
-}
-
-int GNUmakeTokenPool::GetMonitorFd() {
+int GNUmakeTokenPoolPosix::GetMonitorFd() {
   return(rfd_);
 }
 
 struct TokenPool *TokenPool::Get(bool ignore,
                                  bool verbose,
                                  double& max_load_average) {
-  GNUmakeTokenPool *tokenpool = new GNUmakeTokenPool;
+  GNUmakeTokenPool *tokenpool = new GNUmakeTokenPoolPosix;
   if (tokenpool->Setup(ignore, verbose, max_load_average))
     return tokenpool;
   else
