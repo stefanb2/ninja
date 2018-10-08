@@ -529,8 +529,9 @@ if platform.is_windows():
         objs += cxx('minidump-win32', variables=cxxvariables)
     objs += cc('getopt')
 else:
-    objs += cxx('subprocess-posix')
-    objs += cxx('tokenpool-gnu-make-posix')
+    for name in ['subprocess-posix',
+                 'tokenpool-gnu-make-posix']:
+        objs += cxx(name)
 if platform.is_aix():
     objs += cc('getopt')
 if platform.is_msvc():
