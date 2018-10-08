@@ -514,6 +514,7 @@ for name in ['build',
              'parser',
              'state',
              'string_piece_util',
+             'tokenpool-gnu-make',
              'util',
              'version']:
     objs += cxx(name, variables=cxxvariables)
