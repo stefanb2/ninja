@@ -519,7 +519,7 @@ for name in ['build',
     objs += cxx(name, variables=cxxvariables)
 if platform.is_windows():
     for name in ['subprocess-win32',
-                 'tokenpool-none',
+                 'tokenpool-gnu-make-win32',
                  'includes_normalize-win32',
                  'msvc_helper-win32',
                  'msvc_helper_main-win32']:
