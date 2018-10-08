@@ -26,7 +26,7 @@
 
 #include "line_printer.h"
 
-// TokenPool implementation for GNU make jobserver
+// TokenPool implementation for GNU make jobserver - POSIX implementation
 // (http://make.mad-scientist.net/papers/jobserver-implementation/)
 struct GNUmakeTokenPool : public TokenPool {
   GNUmakeTokenPool();
