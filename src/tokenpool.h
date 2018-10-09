@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 // interface to token pool
 struct TokenPool {
   virtual ~TokenPool() {}
@@ -25,7 +29,8 @@ struct TokenPool {
   virtual bool Setup(bool ignore, bool verbose, double& max_load_average) = 0;
 
 #ifdef _WIN32
-  // @TODO
+  // returns true if a token has become available, key is SubProcess otherwise
+  virtual bool IOCPWithToken(HANDLE ioport, PULONG_PTR key) = 0;
 #else
   virtual int GetMonitorFd() = 0;
 #endif

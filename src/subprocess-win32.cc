@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "subprocess.h"
+#include "tokenpool.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -242,14 +243,22 @@ Subprocess *SubprocessSet::Add(const string& command, bool use_console) {
 }
 
 bool SubprocessSet::DoWork(struct TokenPool* tokens) {
-  DWORD bytes_read;
   Subprocess* subproc;
-  OVERLAPPED* overlapped;
 
-  if (!GetQueuedCompletionStatus(ioport_, &bytes_read, (PULONG_PTR)&subproc,
-                                 &overlapped, INFINITE)) {
-    if (GetLastError() != ERROR_BROKEN_PIPE)
-      Win32Fatal("GetQueuedCompletionStatus");
+  if (tokens) {
+    if (tokens->IOCPWithToken(ioport_, (PULONG_PTR)&subproc)) {
+      token_available_ = true;
+      return false;
+    }
+  } else {
+    DWORD bytes_read;
+    OVERLAPPED* overlapped;
+
+    if (!GetQueuedCompletionStatus(ioport_, &bytes_read, (PULONG_PTR)&subproc,
+                                   &overlapped, INFINITE)) {
+      if (GetLastError() != ERROR_BROKEN_PIPE)
+        Win32Fatal("GetQueuedCompletionStatus");
+    }
   }
 
   if (!subproc) // A NULL subproc indicates that we were interrupted and is

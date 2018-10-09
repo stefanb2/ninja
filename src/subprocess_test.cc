@@ -41,7 +41,17 @@ struct TokenPoolTest : public TokenPool {
   bool Setup(bool ignore, bool verbose, double& max_load_average) { return false; }
 
 #ifdef _WIN32
-  // @TODO
+  bool _token_available;
+  bool IOCPWithToken(HANDLE ioport, PULONG_PTR key) {
+    if (_token_available)
+      return true;
+
+    // otherwise wait on IOCP
+    DWORD bytes_read;
+    OVERLAPPED* overlapped;
+    GetQueuedCompletionStatus(ioport, &bytes_read, key, &overlapped, INFINITE);
+    return false;
+  }
 #else
   int _fd;
   int GetMonitorFd() { return _fd; }
@@ -296,17 +306,19 @@ TEST_F(SubprocessTest, ReadStdin) {
 }
 #endif  // _WIN32
 
-// @TODO: remove once TokenPool implementation for Windows is available
-#ifndef _WIN32
 TEST_F(SubprocessTest, TokenAvailable) {
   Subprocess* subproc = subprocs_.Add(kSimpleCommand);
   ASSERT_NE((Subprocess *) 0, subproc);
 
   // simulate GNUmake jobserver pipe with 1 token
+#ifdef _WIN32
+  tokens_._token_available = true;
+#else
   int fds[2];
   ASSERT_EQ(0u, pipe(fds));
   tokens_._fd = fds[0];
   ASSERT_EQ(1u, write(fds[1], "T", 1));
+#endif
 
   subprocs_.ResetTokenAvailable();
   subprocs_.DoWork(&tokens_);
@@ -315,15 +327,21 @@ TEST_F(SubprocessTest, TokenAvailable) {
   EXPECT_EQ(0u, subprocs_.finished_.size());
 
   // remove token to let DoWork() wait for command again
+#ifdef _WIN32
+  tokens_._token_available = false;
+#else
   char token;
   ASSERT_EQ(1u, read(fds[0], &token, 1));
+#endif
 
   while (!subproc->Done()) {
     subprocs_.DoWork(&tokens_);
   }
 
+#ifndef _WIN32
   close(fds[1]);
   close(fds[0]);
+#endif
 
   EXPECT_EQ(ExitSuccess, subproc->Finish());
   EXPECT_NE("", subproc->GetOutput());
@@ -336,17 +354,23 @@ TEST_F(SubprocessTest, TokenNotAvailable) {
   ASSERT_NE((Subprocess *) 0, subproc);
 
   // simulate GNUmake jobserver pipe with 0 tokens
+#ifdef _WIN32
+  tokens_._token_available = false;
+#else
   int fds[2];
   ASSERT_EQ(0u, pipe(fds));
   tokens_._fd = fds[0];
+#endif
 
   subprocs_.ResetTokenAvailable();
   while (!subproc->Done()) {
     subprocs_.DoWork(&tokens_);
   }
 
+#ifndef _WIN32
   close(fds[1]);
   close(fds[0]);
+#endif
 
   EXPECT_FALSE(subprocs_.IsTokenAvailable());
   EXPECT_EQ(ExitSuccess, subproc->Finish());
@@ -354,4 +378,3 @@ TEST_F(SubprocessTest, TokenNotAvailable) {
 
   EXPECT_EQ(1u, subprocs_.finished_.size());
 }
-#endif  // _WIN32
