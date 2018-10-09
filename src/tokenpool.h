@@ -1,4 +1,4 @@
-// Copyright 2016-2017 Google Inc. All Rights Reserved.
+// Copyright 2016-2018 Google Inc. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,6 +21,9 @@ struct TokenPool {
   virtual void Release() = 0;
   virtual void Clear() = 0;
 
+  // returns false if token pool setup failed
+  virtual bool Setup(bool ignore, bool verbose, double& max_load_average) = 0;
+
 #ifdef _WIN32
   // @TODO
 #else
@@ -28,7 +31,5 @@ struct TokenPool {
 #endif
 
   // returns NULL if token pool is not available
-  static struct TokenPool *Get(bool ignore,
-                               bool verbose,
-                               double& max_load_average);
+  static struct TokenPool *Get();
 };

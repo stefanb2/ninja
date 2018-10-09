@@ -68,13 +68,6 @@ bool GNUmakeTokenPoolWin32::ReturnToken() {
                           NULL);      /* not interested in previous count */
 }
 
-struct TokenPool *TokenPool::Get(bool ignore,
-                                 bool verbose,
-                                 double& max_load_average) {
-  GNUmakeTokenPool *tokenpool = new GNUmakeTokenPoolWin32;
-  if (tokenpool->Setup(ignore, verbose, max_load_average))
-    return tokenpool;
-  else
-    delete tokenpool;
-  return NULL;
+struct TokenPool *TokenPool::Get() {
+  return new GNUmakeTokenPoolWin32;
 }

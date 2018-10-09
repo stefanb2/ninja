@@ -197,13 +197,6 @@ int GNUmakeTokenPoolPosix::GetMonitorFd() {
   return(rfd_);
 }
 
-struct TokenPool *TokenPool::Get(bool ignore,
-                                 bool verbose,
-                                 double& max_load_average) {
-  GNUmakeTokenPool *tokenpool = new GNUmakeTokenPoolPosix;
-  if (tokenpool->Setup(ignore, verbose, max_load_average))
-    return tokenpool;
-  else
-    delete tokenpool;
-  return NULL;
+struct TokenPool *TokenPool::Get() {
+  return new GNUmakeTokenPoolPosix;
 }

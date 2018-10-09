@@ -17,8 +17,6 @@
 #include <stdlib.h>
 
 // No-op TokenPool implementation
-struct TokenPool *TokenPool::Get(bool ignore,
-                                 bool verbose,
-                                 double& max_load_average) {
+struct TokenPool *TokenPool::Get() {
   return NULL;
 }

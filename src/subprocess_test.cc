@@ -38,6 +38,7 @@ struct TokenPoolTest : public TokenPool {
   void Reserve()     {}
   void Release()     {}
   void Clear()       {}
+  bool Setup(bool ignore, bool verbose, double& max_load_average) { return false; }
 
 #ifdef _WIN32
   // @TODO

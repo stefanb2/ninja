@@ -24,9 +24,7 @@ struct GNUmakeTokenPool : public TokenPool {
   virtual void Reserve();
   virtual void Release();
   virtual void Clear();
-
-  // shared setup code
-  bool Setup(bool ignore, bool verbose, double& max_load_average);
+  virtual bool Setup(bool ignore, bool verbose, double& max_load_average);
 
   // platform specific implementation
   virtual bool ParseAuth(const char *jobserver) = 0;
