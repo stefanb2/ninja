@@ -85,13 +85,13 @@ DWORD GNUmakeTokenPoolWin32::SemaphoreThread() {
 
   // alertable wait forever on token semaphore
   if (WaitForSingleObjectEx(semaphore_, INFINITE, TRUE) == WAIT_OBJECT_0) {
-    // indicate to parent thread on ioport that we got a token
-    if (!PostQueuedCompletionStatus(ioport_, 0, (ULONG_PTR) this, NULL))
-      Win32Fatal("PostQueuedCompletionStatus");
-
     // release token again for AcquireToken()
     if (!ReleaseSemaphore(semaphore_, 1, NULL))
       Win32Fatal("ReleaseSemaphore/token");
+
+    // indicate to parent thread on ioport that a token might be available
+    if (!PostQueuedCompletionStatus(ioport_, 0, (ULONG_PTR) this, NULL))
+      Win32Fatal("PostQueuedCompletionStatus");
   }
 
   return 0;
