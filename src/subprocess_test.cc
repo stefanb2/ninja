@@ -42,16 +42,12 @@ struct TokenPoolTest : public TokenPool {
 
 #ifdef _WIN32
   bool _token_available;
-  bool IOCPWithToken(HANDLE ioport, PULONG_PTR key) {
+  void WaitForTokenAvailability(HANDLE ioport) {
     if (_token_available)
-      return true;
-
-    // otherwise wait on IOCP
-    DWORD bytes_read;
-    OVERLAPPED* overlapped;
-    GetQueuedCompletionStatus(ioport, &bytes_read, key, &overlapped, INFINITE);
-    return false;
+      // unblock GetQueuedCompletionStatus()
+      PostQueuedCompletionStatus(ioport, 0, (ULONG_PTR) this, NULL);
   }
+  bool TokenIsAvailable(ULONG_PTR key) { return key == (ULONG_PTR) this; }
 #else
   int _fd;
   int GetMonitorFd() { return _fd; }

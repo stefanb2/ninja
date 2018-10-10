@@ -29,8 +29,10 @@ struct TokenPool {
   virtual bool Setup(bool ignore, bool verbose, double& max_load_average) = 0;
 
 #ifdef _WIN32
-  // returns true if a token has become available, key is SubProcess otherwise
-  virtual bool IOCPWithToken(HANDLE ioport, PULONG_PTR key) = 0;
+  virtual void WaitForTokenAvailability(HANDLE ioport) = 0;
+  // returns true if a token has become available
+  // key is result from GetQueuedCompletionStatus()
+  virtual bool TokenIsAvailable(ULONG_PTR key) = 0;
 #else
   virtual int GetMonitorFd() = 0;
 #endif

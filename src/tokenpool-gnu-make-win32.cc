@@ -27,39 +27,82 @@ struct GNUmakeTokenPoolWin32 : public GNUmakeTokenPool {
   GNUmakeTokenPoolWin32();
   virtual ~GNUmakeTokenPoolWin32();
 
-  virtual bool IOCPWithToken(HANDLE ioport, PULONG_PTR key);
+  virtual void WaitForTokenAvailability(HANDLE ioport);
+  virtual bool TokenIsAvailable(ULONG_PTR key);
 
   virtual bool ParseAuth(const char *jobserver);
   virtual bool AcquireToken();
   virtual bool ReturnToken();
 
  private:
-  HANDLE startup_;
-  HANDLE semaphore_;
+  // Semaphore for GNU make jobserver protocol
+  HANDLE semaphore_jobserver_;
+  // Semaphore Child -> Parent
+  // - child releases it before entering wait on jobserver semaphore
+  // - parent blocks on it to know when child enters wait
+  HANDLE semaphore_enter_wait_;
+  // Semaphore Parent -> Child
+  // - parent releases it to allow child to restart loop
+  // - child blocks on it to know when to restart loop
+  HANDLE semaphore_restart_;
+  // set to false if child should exit loop and terminate thread
+  bool running_;
+  // child thread
+  HANDLE child_;
+  // I/O completion port from SubprocessSet
   HANDLE ioport_;
 
+
   DWORD SemaphoreThread();
+  void ReleaseSemaphore(HANDLE semaphore);
+  void WaitForObject(HANDLE object);
   static DWORD WINAPI SemaphoreThreadWrapper(LPVOID param);
   static void NoopAPCFunc(ULONG_PTR param);
 };
 
-GNUmakeTokenPoolWin32::GNUmakeTokenPoolWin32() : semaphore_(NULL) {
+GNUmakeTokenPoolWin32::GNUmakeTokenPoolWin32() : semaphore_jobserver_(NULL),
+                                                 semaphore_enter_wait_(NULL),
+                                                 semaphore_restart_(NULL),
+                                                 running_(false),
+                                                 child_(NULL),
+                                                 ioport_(NULL) {
 }
 
 GNUmakeTokenPoolWin32::~GNUmakeTokenPoolWin32() {
   Clear();
-  CloseHandle(semaphore_);
-  semaphore_ = NULL;
+  CloseHandle(semaphore_jobserver_);
+  semaphore_jobserver_ = NULL;
+
+  if (child_) {
+    // tell child thread to exit
+    running_ = false;
+    ReleaseSemaphore(semaphore_restart_);
+
+    // wait for child thread to exit
+    WaitForObject(child_);
+    CloseHandle(child_);
+    child_ = NULL;
+  }
+
+  if (semaphore_restart_) {
+    CloseHandle(semaphore_restart_);
+    semaphore_restart_ = NULL;
+  }
+
+  if (semaphore_enter_wait_) {
+    CloseHandle(semaphore_enter_wait_);
+    semaphore_enter_wait_ = NULL;
+  }
 }
 
 bool GNUmakeTokenPoolWin32::ParseAuth(const char *jobserver) {
   char *auth = NULL;
   // matches "--jobserver-auth=gmake_semaphore_<INTEGER>..."
   if ((sscanf(jobserver, "%*[^=]=%m[a-z0-9_]", &auth) == 1) &&
-      ((semaphore_ = OpenSemaphore(SEMAPHORE_ALL_ACCESS, /* Semaphore access setting */
-                                   FALSE,                /* Child processes DON'T inherit */
-                                   auth                  /* Semaphore name */
-                                   )) != NULL)) {
+      ((semaphore_jobserver_ = OpenSemaphore(SEMAPHORE_ALL_ACCESS, /* Semaphore access setting */
+                                             FALSE,                /* Child processes DON'T inherit */
+                                             auth                  /* Semaphore name */
+                                            )) != NULL)) {
     free(auth);
     return true;
   }
@@ -69,29 +112,32 @@ bool GNUmakeTokenPoolWin32::ParseAuth(const char *jobserver) {
 }
 
 bool GNUmakeTokenPoolWin32::AcquireToken() {
-  return WaitForSingleObject(semaphore_, 0) == WAIT_OBJECT_0;
+  return WaitForSingleObject(semaphore_jobserver_, 0) == WAIT_OBJECT_0;
 }
 
 bool GNUmakeTokenPoolWin32::ReturnToken() {
-  return ReleaseSemaphore(semaphore_,
-                          1,          /* increase count by one */
-                          NULL);      /* not interested in previous count */
+  ReleaseSemaphore(semaphore_jobserver_);
+  return true;
 }
 
 DWORD GNUmakeTokenPoolWin32::SemaphoreThread() {
-  // indicate to parent thread that child thread has started
-  if (!ReleaseSemaphore(startup_, 1, NULL))
-    Win32Fatal("ReleaseSemaphore/startup");
+  while (running_) {
+    // indicate to parent that we are entering wait
+    ReleaseSemaphore(semaphore_enter_wait_);
 
-  // alertable wait forever on token semaphore
-  if (WaitForSingleObjectEx(semaphore_, INFINITE, TRUE) == WAIT_OBJECT_0) {
-    // release token again for AcquireToken()
-    if (!ReleaseSemaphore(semaphore_, 1, NULL))
-      Win32Fatal("ReleaseSemaphore/token");
+    // alertable wait forever on token semaphore
+    if (WaitForSingleObjectEx(semaphore_jobserver_, INFINITE, TRUE) == WAIT_OBJECT_0) {
+      // release token again for AcquireToken()
+      ReleaseSemaphore(semaphore_jobserver_);
 
-    // indicate to parent thread on ioport that a token might be available
-    if (!PostQueuedCompletionStatus(ioport_, 0, (ULONG_PTR) this, NULL))
-      Win32Fatal("PostQueuedCompletionStatus");
+      // indicate to parent on ioport that a token might be available
+      if (!PostQueuedCompletionStatus(ioport_, 0, (ULONG_PTR) this, NULL))
+        Win32Fatal("PostQueuedCompletionStatus");
+    }
+
+    // wait for parent to allow loop restart
+    WaitForObject(semaphore_restart_);
+    // semaphore is now in nonsignaled state again for next run...
   }
 
   return 0;
@@ -105,43 +151,58 @@ DWORD WINAPI GNUmakeTokenPoolWin32::SemaphoreThreadWrapper(LPVOID param) {
 void GNUmakeTokenPoolWin32::NoopAPCFunc(ULONG_PTR param) {
 }
 
-bool GNUmakeTokenPoolWin32::IOCPWithToken(HANDLE ioport, PULONG_PTR key) {
-  // subprocess-win32.cc uses I/O completion port (IOCP) which can't be
-  // used as a waitable object. Therefore we can't use WaitMultipleObjects()
-  // to wait on the IOCP and the token semaphore at the same time.
-  HANDLE thread;
-  DWORD bytes_read;
-  OVERLAPPED* overlapped;
+void GNUmakeTokenPoolWin32::WaitForTokenAvailability(HANDLE ioport) {
+  if (child_ == NULL) {
+    // first invocation
+    //
+    // subprocess-win32.cc uses I/O completion port (IOCP) which can't be
+    // used as a waitable object. Therefore we can't use WaitMultipleObjects()
+    // to wait on the IOCP and the token semaphore at the same time. Create
+    // a child thread that waits on the semaphore and posts an I/O completion
+    ioport_ = ioport;
 
-  // create thread that waits on token semaphore
-  ioport_  = ioport;
-  startup_ = CreateSemaphore(NULL, 0, 1, NULL);
-  if (startup_ == NULL)
-    Win32Fatal("CreateSemaphore");
-  if ((thread = CreateThread(NULL, 0, &SemaphoreThreadWrapper, this, 0, NULL))
-      == NULL)
-    Win32Fatal("CreateThread");
+    // create both semaphores in nonsignaled state
+    if ((semaphore_enter_wait_ = CreateSemaphore(NULL, 0, 1, NULL))
+        == NULL)
+      Win32Fatal("CreateSemaphore/enter_wait");
+    if ((semaphore_restart_ = CreateSemaphore(NULL, 0, 1, NULL))
+        == NULL)
+      Win32Fatal("CreateSemaphore/restart");
 
-  // wait for child thread to release startup semaphore
-  if (WaitForSingleObject(startup_, INFINITE) != WAIT_OBJECT_0)
-    Win32Fatal("WaitForSingleObject/startup");
-  CloseHandle(startup_);
-  startup_ = NULL;
+    // start child thread
+    running_ = true;
+    if ((child_ = CreateThread(NULL, 0, &SemaphoreThreadWrapper, this, 0, NULL))
+        == NULL)
+      Win32Fatal("CreateThread");
 
-  // now child thread waits on token semaphore and we wait on IOCP...
-  if (!GetQueuedCompletionStatus(ioport, &bytes_read, key,
-                                 &overlapped, INFINITE)) {
-    if (GetLastError() != ERROR_BROKEN_PIPE)
-      Win32Fatal("GetQueuedCompletionStatus");
+  } else {
+    // all further invocations - allow child thread to loop
+    ReleaseSemaphore(semaphore_restart_);
   }
 
-  // alert child thread and wait for it to exit
-  QueueUserAPC(&NoopAPCFunc, thread, (ULONG_PTR)NULL);
-  if (WaitForSingleObject(thread, INFINITE) != WAIT_OBJECT_0)
-    Win32Fatal("WaitForSingleObject/exit");
-  CloseHandle(thread);
+  // wait for child thread to enter wait
+  WaitForObject(semaphore_enter_wait_);
+  // semaphore is now in nonsignaled state again for next run...
 
-  return *key == (ULONG_PTR) this;
+  // now SubprocessSet::DoWork() can enter GetQueuedCompletionStatus()...
+}
+
+bool GNUmakeTokenPoolWin32::TokenIsAvailable(ULONG_PTR key) {
+  // alert child thread to break wait on token semaphore
+  QueueUserAPC(&NoopAPCFunc, child_, (ULONG_PTR)NULL);
+
+  // return true when GetQueuedCompletionStatus() returned our key
+  return key == (ULONG_PTR) this;
+}
+
+void GNUmakeTokenPoolWin32::ReleaseSemaphore(HANDLE semaphore) {
+  if (!::ReleaseSemaphore(semaphore, 1, NULL))
+    Win32Fatal("ReleaseSemaphore");
+}
+
+void GNUmakeTokenPoolWin32::WaitForObject(HANDLE object) {
+  if (WaitForSingleObject(object, INFINITE) != WAIT_OBJECT_0)
+    Win32Fatal("WaitForSingleObject");
 }
 
 struct TokenPool *TokenPool::Get() {
