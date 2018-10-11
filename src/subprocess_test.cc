@@ -318,14 +318,20 @@ TEST_F(SubprocessTest, TokenAvailable) {
 
   subprocs_.ResetTokenAvailable();
   subprocs_.DoWork(&tokens_);
+#ifdef _WIN32
+  tokens_._token_available = false;
+  // we need to loop here as we have no conrol where the token
+  // I/O completion post ends up in the queue
+  while (!subproc->Done() && !subprocs_.IsTokenAvailable()) {
+    subprocs_.DoWork(&tokens_);
+  }
+#endif
 
   EXPECT_TRUE(subprocs_.IsTokenAvailable());
   EXPECT_EQ(0u, subprocs_.finished_.size());
 
   // remove token to let DoWork() wait for command again
-#ifdef _WIN32
-  tokens_._token_available = false;
-#else
+#ifndef _WIN32
   char token;
   ASSERT_EQ(1u, read(fds[0], &token, 1));
 #endif
