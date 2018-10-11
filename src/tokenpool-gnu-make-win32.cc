@@ -17,7 +17,9 @@
 // always include first to make sure other headers do the correct thing...
 #include <windows.h>
 
-#include <stdio.h>
+#include <ctype.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "util.h"
 
@@ -105,18 +107,34 @@ const char *GNUmakeTokenPoolWin32::GetEnv(const char *name) {
 }
 
 bool GNUmakeTokenPoolWin32::ParseAuth(const char *jobserver) {
-  char *auth = NULL;
-  // matches "--jobserver-auth=gmake_semaphore_<INTEGER>..."
-  if ((sscanf(jobserver, "%*[^=]=%m[a-z0-9_]", &auth) == 1) &&
-      ((semaphore_jobserver_ = OpenSemaphore(SEMAPHORE_ALL_ACCESS, /* Semaphore access setting */
-                                             FALSE,                /* Child processes DON'T inherit */
-                                             auth                  /* Semaphore name */
-                                            )) != NULL)) {
-    free(auth);
-    return true;
+  // match "--jobserver-auth=gmake_semaphore_<INTEGER>..."
+  const char *start = strchr(jobserver, '=');
+  if (start) {
+    const char *end = start;
+    unsigned int len;
+    char c, *auth;
+
+    while ((c = *++end) != '\0')
+      if (!(isalnum(c) || (c == '_')))
+        break;
+    len = end - start; // includes string terminator in count
+
+    if ((len > 1) && ((auth = (char *)malloc(len)) != NULL)) {
+      strncpy(auth, start + 1, len - 1);
+      auth[len - 1] = '\0';
+
+      if ((semaphore_jobserver_ = OpenSemaphore(SEMAPHORE_ALL_ACCESS, /* Semaphore access setting */
+                                                FALSE,                /* Child processes DON'T inherit */
+                                                auth                  /* Semaphore name */
+                                                )) != NULL) {
+        free(auth);
+        return true;
+      }
+
+      free(auth);
+    }
   }
 
-  free(auth);
   return false;
 }
 
