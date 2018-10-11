@@ -32,6 +32,7 @@ struct GNUmakeTokenPoolPosix : public GNUmakeTokenPool {
 
   virtual int GetMonitorFd();
 
+  virtual const char *GetEnv(const char *name) { return getenv(name); };
   virtual bool ParseAuth(const char *jobserver);
   virtual bool AcquireToken();
   virtual bool ReturnToken();

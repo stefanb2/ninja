@@ -31,7 +31,7 @@ GNUmakeTokenPool::~GNUmakeTokenPool() {
 bool GNUmakeTokenPool::Setup(bool ignore,
                              bool verbose,
                              double& max_load_average) {
-  const char *value = getenv("MAKEFLAGS");
+  const char *value = GetEnv("MAKEFLAGS");
   if (value) {
     // GNU make <= 4.1
     const char *jobserver = strstr(value, "--jobserver-fds=");

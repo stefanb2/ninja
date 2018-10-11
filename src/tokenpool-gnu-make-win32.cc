@@ -30,6 +30,7 @@ struct GNUmakeTokenPoolWin32 : public GNUmakeTokenPool {
   virtual void WaitForTokenAvailability(HANDLE ioport);
   virtual bool TokenIsAvailable(ULONG_PTR key);
 
+  virtual const char *GetEnv(const char *name);
   virtual bool ParseAuth(const char *jobserver);
   virtual bool AcquireToken();
   virtual bool ReturnToken();
@@ -93,6 +94,14 @@ GNUmakeTokenPoolWin32::~GNUmakeTokenPoolWin32() {
     CloseHandle(semaphore_enter_wait_);
     semaphore_enter_wait_ = NULL;
   }
+}
+
+const char *GNUmakeTokenPoolWin32::GetEnv(const char *name) {
+  // getenv() does not work correctly together with tokenpool_tests.cc
+  static char buffer[MAX_PATH + 1];
+  if (GetEnvironmentVariable("MAKEFLAGS", buffer, sizeof(buffer)) == 0)
+    return NULL;
+  return(buffer);
 }
 
 bool GNUmakeTokenPoolWin32::ParseAuth(const char *jobserver) {
