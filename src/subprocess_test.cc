@@ -33,7 +33,7 @@ const char* kSimpleCommand = "cmd /c dir \\";
 const char* kSimpleCommand = "ls /";
 #endif
 
-struct TokenPoolTest : public TokenPool {
+struct TestTokenPool : public TokenPool {
   bool Acquire()     { return false; }
   void Reserve()     {}
   void Release()     {}
@@ -56,7 +56,7 @@ struct TokenPoolTest : public TokenPool {
 
 struct SubprocessTest : public testing::Test {
   SubprocessSet subprocs_;
-  TokenPoolTest tokens_;
+  TestTokenPool tokens_;
 };
 
 }  // anonymous namespace
@@ -71,7 +71,7 @@ TEST_F(SubprocessTest, BadCommandStderr) {
     // Pretend we discovered that stderr was ready for writing.
     subprocs_.DoWork(NULL);
   }
-  ASSERT_EQ(false, subprocs_.IsTokenAvailable());
+  ASSERT_FALSE(subprocs_.IsTokenAvailable());
 
   EXPECT_EQ(ExitFailure, subproc->Finish());
   EXPECT_NE("", subproc->GetOutput());
@@ -87,7 +87,7 @@ TEST_F(SubprocessTest, NoSuchCommand) {
     // Pretend we discovered that stderr was ready for writing.
     subprocs_.DoWork(NULL);
   }
-  ASSERT_EQ(false, subprocs_.IsTokenAvailable());
+  ASSERT_FALSE(subprocs_.IsTokenAvailable());
 
   EXPECT_EQ(ExitFailure, subproc->Finish());
   EXPECT_NE("", subproc->GetOutput());
@@ -107,7 +107,7 @@ TEST_F(SubprocessTest, InterruptChild) {
   while (!subproc->Done()) {
     subprocs_.DoWork(NULL);
   }
-  ASSERT_EQ(false, subprocs_.IsTokenAvailable());
+  ASSERT_FALSE(subprocs_.IsTokenAvailable());
 
   EXPECT_EQ(ExitInterrupted, subproc->Finish());
 }
@@ -133,7 +133,7 @@ TEST_F(SubprocessTest, InterruptChildWithSigTerm) {
   while (!subproc->Done()) {
     subprocs_.DoWork(NULL);
   }
-  ASSERT_EQ(false, subprocs_.IsTokenAvailable());
+  ASSERT_FALSE(subprocs_.IsTokenAvailable());
 
   EXPECT_EQ(ExitInterrupted, subproc->Finish());
 }
@@ -159,7 +159,7 @@ TEST_F(SubprocessTest, InterruptChildWithSigHup) {
   while (!subproc->Done()) {
     subprocs_.DoWork(NULL);
   }
-  ASSERT_EQ(false, subprocs_.IsTokenAvailable());
+  ASSERT_FALSE(subprocs_.IsTokenAvailable());
 
   EXPECT_EQ(ExitInterrupted, subproc->Finish());
 }
@@ -188,7 +188,7 @@ TEST_F(SubprocessTest, Console) {
     while (!subproc->Done()) {
       subprocs_.DoWork(NULL);
     }
-    ASSERT_EQ(false, subprocs_.IsTokenAvailable());
+    ASSERT_FALSE(subprocs_.IsTokenAvailable());
 
     EXPECT_EQ(ExitSuccess, subproc->Finish());
   }
@@ -204,7 +204,7 @@ TEST_F(SubprocessTest, SetWithSingle) {
   while (!subproc->Done()) {
     subprocs_.DoWork(NULL);
   }
-  ASSERT_EQ(false, subprocs_.IsTokenAvailable());
+  ASSERT_FALSE(subprocs_.IsTokenAvailable());
   ASSERT_EQ(ExitSuccess, subproc->Finish());
   ASSERT_NE("", subproc->GetOutput());
 
@@ -241,7 +241,7 @@ TEST_F(SubprocessTest, SetWithMulti) {
     ASSERT_GT(subprocs_.running_.size(), 0u);
     subprocs_.DoWork(NULL);
   }
-  ASSERT_EQ(false, subprocs_.IsTokenAvailable());
+  ASSERT_FALSE(subprocs_.IsTokenAvailable());
   ASSERT_EQ(0u, subprocs_.running_.size());
   ASSERT_EQ(3u, subprocs_.finished_.size());
 
@@ -276,7 +276,7 @@ TEST_F(SubprocessTest, SetWithLots) {
   subprocs_.ResetTokenAvailable();
   while (!subprocs_.running_.empty())
     subprocs_.DoWork(NULL);
-  ASSERT_EQ(false, subprocs_.IsTokenAvailable());
+  ASSERT_FALSE(subprocs_.IsTokenAvailable());
   for (size_t i = 0; i < procs.size(); ++i) {
     ASSERT_EQ(ExitSuccess, procs[i]->Finish());
     ASSERT_NE("", procs[i]->GetOutput());
@@ -296,7 +296,7 @@ TEST_F(SubprocessTest, ReadStdin) {
   while (!subproc->Done()) {
     subprocs_.DoWork(NULL);
   }
-  ASSERT_EQ(false, subprocs_.IsTokenAvailable());
+  ASSERT_FALSE(subprocs_.IsTokenAvailable());
   ASSERT_EQ(ExitSuccess, subproc->Finish());
   ASSERT_EQ(1u, subprocs_.finished_.size());
 }
