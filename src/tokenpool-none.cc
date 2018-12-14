@@ -17,6 +17,6 @@
 #include <stdlib.h>
 
 // No-op TokenPool implementation
-struct TokenPool *TokenPool::Get() {
+TokenPool *TokenPool::Get() {
   return NULL;
 }

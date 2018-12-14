@@ -233,7 +233,7 @@ Subprocess *SubprocessSet::Add(const string& command, bool use_console) {
 }
 
 #ifdef USE_PPOLL
-bool SubprocessSet::DoWork(struct TokenPool* tokens) {
+bool SubprocessSet::DoWork(TokenPool* tokens) {
   vector<pollfd> fds;
   nfds_t nfds = 0;
 
@@ -298,7 +298,7 @@ bool SubprocessSet::DoWork(struct TokenPool* tokens) {
 }
 
 #else  // !defined(USE_PPOLL)
-bool SubprocessSet::DoWork(struct TokenPool* tokens) {
+bool SubprocessSet::DoWork(TokenPool* tokens) {
   fd_set set;
   int nfds = 0;
   FD_ZERO(&set);

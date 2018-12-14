@@ -232,6 +232,6 @@ void GNUmakeTokenPoolWin32::WaitForObject(HANDLE object) {
     Win32Fatal("WaitForSingleObject");
 }
 
-struct TokenPool *TokenPool::Get() {
+TokenPool *TokenPool::Get() {
   return new GNUmakeTokenPoolWin32;
 }

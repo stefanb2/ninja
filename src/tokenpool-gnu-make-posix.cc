@@ -198,6 +198,6 @@ int GNUmakeTokenPoolPosix::GetMonitorFd() {
   return(rfd_);
 }
 
-struct TokenPool *TokenPool::Get() {
+TokenPool *TokenPool::Get() {
   return new GNUmakeTokenPoolPosix;
 }
