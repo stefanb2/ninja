@@ -218,7 +218,7 @@ void GNUmakeTokenPoolWin32::WaitForTokenAvailability(HANDLE ioport) {
 
 bool GNUmakeTokenPoolWin32::TokenIsAvailable(ULONG_PTR key) {
   // alert child thread to break wait on token semaphore
-  QueueUserAPC(&NoopAPCFunc, child_, (ULONG_PTR)NULL);
+  QueueUserAPC((PAPCFUNC)&NoopAPCFunc, child_, (ULONG_PTR)NULL);
 
   // return true when GetQueuedCompletionStatus() returned our key
   return key == (ULONG_PTR) this;
