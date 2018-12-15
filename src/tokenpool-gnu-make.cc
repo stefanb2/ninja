@@ -72,7 +72,29 @@ bool GNUmakeTokenPool::SetupClient(bool ignore,
 bool GNUmakeTokenPool::SetupMaster(bool verbose,
                                    int parallelism,
                                    double max_load_average) {
-  // @TODO
+  // no need to set up token pool for serial builds
+  if (parallelism == 1)
+    return false;
+
+  string auth;
+  if (CreatePool(parallelism, &auth)) {
+    string value = "--jobserver-auth=" + auth;
+    if (max_load_average > 0.0f) {
+      char buffer[32];
+      snprintf(buffer, sizeof(buffer), "%g", max_load_average);
+      value += " -l";
+      value += buffer;
+    }
+
+    if (SetEnv("MAKEFLAGS", value.c_str())) {
+      if (verbose) {
+        LinePrinter printer;
+        printer.PrintOnNewLine("ninja: simulating GNU make jobserver.\n");
+      }
+      return true;
+    }
+  }
+
   return false;
 }
 
