@@ -102,7 +102,7 @@ GNUmakeTokenPoolWin32::~GNUmakeTokenPoolWin32() {
 const char* GNUmakeTokenPoolWin32::GetEnv(const char* name) {
   // getenv() does not work correctly together with tokenpool_tests.cc
   static char buffer[MAX_PATH + 1];
-  if (GetEnvironmentVariable("MAKEFLAGS", buffer, sizeof(buffer)) == 0)
+  if (GetEnvironmentVariable(name, buffer, sizeof(buffer)) == 0)
     return NULL;
   return buffer;
 }
