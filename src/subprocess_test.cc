@@ -33,7 +33,7 @@ const char* kSimpleCommand = "cmd /c dir \\";
 const char* kSimpleCommand = "ls /";
 #endif
 
-struct TokenPoolTest : public TokenPool {
+struct TestTokenPool : public TokenPool {
   bool Acquire()     { return false; }
   void Reserve()     {}
   void Release()     {}
@@ -56,7 +56,7 @@ struct TokenPoolTest : public TokenPool {
 
 struct SubprocessTest : public testing::Test {
   SubprocessSet subprocs_;
-  TokenPoolTest tokens_;
+  TestTokenPool tokens_;
 };
 
 }  // anonymous namespace
